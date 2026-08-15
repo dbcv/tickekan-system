@@ -39,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Tab Navigation ---
     const tabMeta = {
         'tab-console': { title: '実行コントロール', desc: 'AutoTicket の手動実行・ステータス監視・R7ログイン対話入力' },
+        'tab-images': { title: '売上画像生成', desc: 'スプレッドシートデータから3-Slice縦可変長画像を一括生成・ZIPダウンロード' },
         'tab-env': { title: '.env 環境変数エディタ', desc: '項目名は固定保護されています。設定値 (Value) を更新してください' },
         'tab-account': { title: 'サービスアカウント設定', desc: 'Google Sheets API 連携用 service_account.json の管理' },
         'tab-cron': { title: '定期実行 (Cron) システム', desc: 'レンタルサーバー環境での自動実行タイミングの設定とステータス' },
@@ -59,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Load data when tab opens
+            if (targetTab === 'tab-images') loadImageGeneratorConfig();
             if (targetTab === 'tab-env') loadEnvFields();
             if (targetTab === 'tab-account') loadServiceAccountStatus();
             if (targetTab === 'tab-cron') loadCronStatus();
@@ -606,6 +608,376 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // =========================================================================
+    // 5. Image Generator Logic
+    // =========================================================================
+    const btnStartImageGen = document.getElementById('btn-start-image-gen');
+    const btnDownloadImagesZip = document.getElementById('btn-download-images-zip');
+    const imageGenStatusDot = document.getElementById('image-gen-status-dot');
+    const imageGenStatusText = document.getElementById('image-gen-status-text');
+    const imageGenZipInfo = document.getElementById('image-gen-zip-info');
+    const imageGenProgressContainer = document.getElementById('image-gen-progress-container');
+    const imageGenProgressFill = document.getElementById('image-gen-progress-fill');
+    const imageGenProgressMsg = document.getElementById('image-gen-progress-msg');
+    const imageGenProgressPercent = document.getElementById('image-gen-progress-percent');
+
+    const fontSelect = document.getElementById('font-select');
+    const fontFileInput = document.getElementById('font-file-input');
+    const fontDropzone = document.getElementById('font-dropzone');
+
+    let imageGenPollInterval = null;
+
+    function formatBytes(bytes, decimals = 1) {
+        if (!bytes) return '0 B';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    function loadImageGeneratorConfig() {
+        fetch(`${API_BASE}/images/config`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success || !data.config) return;
+                const cfg = data.config;
+
+                // 1. Background Slices
+                const bgs = cfg.backgrounds || {};
+                ['bg-top', 'bg-loop', 'bg-bottom'].forEach(type => {
+                    const info = bgs[type] || {};
+                    const statusEl = document.getElementById(`status-${type}`);
+                    const thumbEl = document.getElementById(`thumb-${type}`);
+                    const prevEl = document.getElementById(`prev-img-${type.replace('bg-', '')}`);
+
+                    if (info.exists && info.url) {
+                        if (statusEl) statusEl.innerHTML = '<span class="badge badge-emerald">登録済</span>';
+                        if (thumbEl) thumbEl.innerHTML = `<img src="${info.url}" alt="${type}">`;
+                        if (prevEl) {
+                            prevEl.src = info.url;
+                            prevEl.style.display = 'block';
+                        }
+                    } else {
+                        if (statusEl) statusEl.innerHTML = '<span class="badge badge-warning">未登録 (白背景)</span>';
+                        if (thumbEl) thumbEl.innerHTML = '<span>白背景(自動)</span>';
+                        if (prevEl) {
+                            prevEl.src = '';
+                            prevEl.style.display = 'none';
+                        }
+                    }
+                });
+
+                // 2. Fonts
+                if (fontSelect) {
+                    fontSelect.innerHTML = '';
+                    (cfg.fonts || []).forEach(f => {
+                        const opt = document.createElement('option');
+                        opt.value = f.path;
+                        opt.dataset.custom = f.is_custom ? 'true' : 'false';
+                        opt.textContent = `${f.name} ${f.is_custom ? '(カスタム)' : ''}`;
+                        if (cfg.selected_font === f.path) {
+                            opt.selected = true;
+                        }
+                        fontSelect.appendChild(opt);
+                    });
+                    updateDeleteFontButtonState();
+                }
+
+                // 3. ZIP Status
+                const zip = cfg.zip_info || {};
+                if (zip.exists && zip.size_bytes > 0) {
+                    if (btnDownloadImagesZip) {
+                        btnDownloadImagesZip.classList.remove('disabled');
+                        btnDownloadImagesZip.removeAttribute('aria-disabled');
+                    }
+                    if (imageGenZipInfo) {
+                        imageGenZipInfo.innerHTML = `<span class="badge badge-emerald">生成済 (${formatBytes(zip.size_bytes)})</span> <span class="text-dim text-xs">${zip.updated_at || ''}</span>`;
+                    }
+                } else {
+                    if (btnDownloadImagesZip) {
+                        btnDownloadImagesZip.classList.add('disabled');
+                        btnDownloadImagesZip.setAttribute('aria-disabled', 'true');
+                    }
+                    if (imageGenZipInfo) imageGenZipInfo.innerHTML = '<span class="badge badge-inactive">未生成</span>';
+                }
+
+                // 4. Current Status
+                updateImageGenStatusUI(cfg.status);
+            })
+            .catch(err => console.error('Error loading images config:', err));
+    }
+
+    function updateImageGenStatusUI(status) {
+        if (!status) return;
+
+        if (status.is_generating) {
+            if (btnStartImageGen) {
+                btnStartImageGen.disabled = true;
+                btnStartImageGen.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 生成中...';
+            }
+            if (imageGenStatusDot) imageGenStatusDot.className = 'status-dot running';
+            if (imageGenStatusText) imageGenStatusText.innerHTML = `<span class="status-dot running"></span> <span>生成中 (${status.progress_percent || 0}%)</span>`;
+            if (imageGenProgressContainer) imageGenProgressContainer.classList.remove('hidden');
+            if (imageGenProgressFill) imageGenProgressFill.style.width = `${status.progress_percent || 0}%`;
+            if (imageGenProgressPercent) imageGenProgressPercent.textContent = `${status.progress_percent || 0}%`;
+            if (imageGenProgressMsg) imageGenProgressMsg.textContent = status.message || '画像を生成しています...';
+
+            startImageGenPolling();
+        } else {
+            if (btnStartImageGen) {
+                btnStartImageGen.disabled = false;
+                btnStartImageGen.innerHTML = '<i class="fa-solid fa-play"></i> 画像作成を開始';
+            }
+
+            if (status.status === 'success') {
+                if (imageGenStatusDot) imageGenStatusDot.className = 'status-dot idle';
+                if (imageGenStatusText) imageGenStatusText.innerHTML = `<span class="badge badge-emerald"><i class="fa-solid fa-check"></i> 完了 (${status.last_result?.count || 0}枚)</span>`;
+                if (imageGenProgressContainer) imageGenProgressContainer.classList.add('hidden');
+                if (btnDownloadImagesZip) {
+                    btnDownloadImagesZip.classList.remove('disabled');
+                    btnDownloadImagesZip.removeAttribute('aria-disabled');
+                }
+            } else if (status.status === 'error') {
+                if (imageGenStatusDot) imageGenStatusDot.className = 'status-dot error';
+                if (imageGenStatusText) imageGenStatusText.innerHTML = `<span class="badge badge-danger"><i class="fa-solid fa-triangle-exclamation"></i> エラー</span> <span class="text-dim text-xs">${status.error_message || ''}</span>`;
+                if (imageGenProgressContainer) imageGenProgressContainer.classList.add('hidden');
+            } else {
+                if (imageGenStatusDot) imageGenStatusDot.className = 'status-dot idle';
+                if (imageGenStatusText) imageGenStatusText.innerHTML = `<span class="status-dot idle"></span> <span>待機中</span>`;
+                if (imageGenProgressContainer) imageGenProgressContainer.classList.add('hidden');
+            }
+
+            stopImageGenPolling();
+        }
+    }
+
+    function startImageGenPolling() {
+        if (imageGenPollInterval) return;
+        imageGenPollInterval = setInterval(() => {
+            fetch(`${API_BASE}/images/generate/status`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.status) {
+                        updateImageGenStatusUI(data.status);
+                        if (!data.status.is_generating && data.status.status === 'success') {
+                            showToast(`画像生成が完了しました！ (${data.status.last_result?.count || 0}枚)`, 'success');
+                            loadImageGeneratorConfig();
+                        } else if (!data.status.is_generating && data.status.status === 'error') {
+                            showToast(`画像生成エラー: ${data.status.error_message}`, 'error');
+                        }
+                    }
+                })
+                .catch(err => console.error('Image gen poll error:', err));
+        }, 1200);
+    }
+
+    function stopImageGenPolling() {
+        if (imageGenPollInterval) {
+            clearInterval(imageGenPollInterval);
+            imageGenPollInterval = null;
+        }
+    }
+
+    // --- Background Slice Upload Handlers ---
+    ['bg-top', 'bg-loop', 'bg-bottom'].forEach(type => {
+        const fileInput = document.getElementById(`file-${type}`);
+        if (!fileInput) return;
+
+        fileInput.addEventListener('change', () => {
+            if (!fileInput.files || !fileInput.files[0]) return;
+            const file = fileInput.files[0];
+
+            const formData = new FormData();
+            formData.append('type', type);
+            formData.append('file', file);
+
+            const statusEl = document.getElementById(`status-${type}`);
+            if (statusEl) statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> アップロード中...';
+
+            fetch(`${API_BASE}/images/background/upload`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    loadImageGeneratorConfig();
+                } else {
+                    showToast(data.message || 'アップロード失敗', 'error');
+                    loadImageGeneratorConfig();
+                }
+            })
+            .catch(() => {
+                showToast('通信エラーが発生しました', 'error');
+                loadImageGeneratorConfig();
+            });
+        });
+    });
+
+    const btnDeleteFont = document.getElementById('btn-delete-font');
+
+    function updateDeleteFontButtonState() {
+        if (!btnDeleteFont || !fontSelect) return;
+        const selectedOpt = fontSelect.options[fontSelect.selectedIndex];
+        if (selectedOpt && selectedOpt.dataset.custom === 'true') {
+            btnDeleteFont.disabled = false;
+            btnDeleteFont.classList.remove('disabled');
+            btnDeleteFont.title = '選択中のカスタムフォントを削除（解除）';
+        } else {
+            btnDeleteFont.disabled = true;
+            btnDeleteFont.classList.add('disabled');
+            btnDeleteFont.title = 'システムフォントは削除できません';
+        }
+    }
+
+    // --- Font Selection Handler ---
+    if (fontSelect) {
+        fontSelect.addEventListener('change', () => {
+            const fontPath = fontSelect.value;
+            updateDeleteFontButtonState();
+            if (!fontPath) return;
+
+            fetch(`${API_BASE}/images/font/select`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ font_path: fontPath })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, 'success');
+                } else {
+                    showToast(data.message || 'フォント設定エラー', 'error');
+                }
+            })
+            .catch(() => showToast('通信エラー', 'error'));
+        });
+    }
+
+    // --- Font Delete Handler ---
+    if (btnDeleteFont) {
+        btnDeleteFont.addEventListener('click', () => {
+            if (!fontSelect || !fontSelect.value) return;
+            const selectedOpt = fontSelect.options[fontSelect.selectedIndex];
+            const fontName = selectedOpt ? selectedOpt.textContent.replace('(カスタム)', '').trim() : '';
+
+            if (!confirm(`カスタムフォント '${fontName}' を削除（解除）してもよろしいですか？`)) {
+                return;
+            }
+
+            btnDeleteFont.disabled = true;
+            fetch(`${API_BASE}/images/font/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ font_path: fontSelect.value })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    loadImageGeneratorConfig();
+                } else {
+                    showToast(data.message || '削除失敗', 'error');
+                    updateDeleteFontButtonState();
+                }
+            })
+            .catch(() => {
+                showToast('通信エラーが発生しました', 'error');
+                updateDeleteFontButtonState();
+            });
+        });
+    }
+
+    // --- Font Upload Handler ---
+    if (fontFileInput) {
+        fontFileInput.addEventListener('change', () => {
+            if (!fontFileInput.files || !fontFileInput.files[0]) return;
+            uploadFont(fontFileInput.files[0]);
+        });
+    }
+
+    if (fontDropzone) {
+        ['dragenter', 'dragover'].forEach(name => {
+            fontDropzone.addEventListener(name, (e) => {
+                e.preventDefault();
+                fontDropzone.classList.add('dragover');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(name => {
+            fontDropzone.addEventListener(name, (e) => {
+                e.preventDefault();
+                fontDropzone.classList.remove('dragover');
+            });
+        });
+
+        fontDropzone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files && files.length > 0) {
+                uploadFont(files[0]);
+            }
+        });
+    }
+
+    function uploadFont(file) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!['ttf', 'otf', 'ttc'].includes(ext)) {
+            showToast('対応ファイル形式は .ttf, .otf, .ttc です', 'error');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        showToast(`フォント '${file.name}' をアップロード中...`, 'info');
+
+        fetch(`${API_BASE}/images/font/upload`, {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast(data.message, 'success');
+                loadImageGeneratorConfig();
+            } else {
+                showToast(data.message || 'アップロード失敗', 'error');
+            }
+        })
+        .catch(() => showToast('通信エラー', 'error'));
+    }
+
+    // --- Start Generation Button Handler ---
+    if (btnStartImageGen) {
+        btnStartImageGen.addEventListener('click', () => {
+            if (btnStartImageGen.disabled) return;
+
+            btnStartImageGen.disabled = true;
+            btnStartImageGen.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 開始処理中...';
+
+            fetch(`${API_BASE}/images/generate`, {
+                method: 'POST'
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('画像生成を開始しました！', 'info');
+                    startImageGenPolling();
+                } else {
+                    showToast(data.message || '開始エラー', 'error');
+                    loadImageGeneratorConfig();
+                }
+            })
+            .catch(() => {
+                showToast('通信エラーが発生しました', 'error');
+                loadImageGeneratorConfig();
+            });
+        });
+    }
+
     // --- Initialize App ---
     startPollingMode();
 });
+

@@ -36,6 +36,10 @@
                     <i class="fa-solid fa-circle-play"></i>
                     <span>実行コントロール</span>
                 </button>
+                <button class="nav-item" data-tab="tab-images">
+                    <i class="fa-solid fa-images"></i>
+                    <span>売上画像生成</span>
+                </button>
                 <button class="nav-item" data-tab="tab-env">
                     <i class="fa-solid fa-sliders"></i>
                     <span>.env エディタ</span>
@@ -294,6 +298,180 @@
                                     <code id="cron-webhook-url">http://.../api/cron/run?token=...</code>
                                     <button class="btn-icon" onclick="copyToClipboard('cron-webhook-url')"><i
                                             class="fa-solid fa-copy"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 5: PERSONAL IMAGE GENERATOR -->
+            <section class="tab-content" id="tab-images">
+                <!-- Action & Status Card -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <div>
+                            <h2><i class="fa-solid fa-wand-magic-sparkles"></i> 個人別チケット売上画像の一括生成</h2>
+                            <p class="card-desc">スプレッドシートの加工済みデータ（Ticket / Members）を読み込み、3-Slice縦可変長画像を生成してZIP化します。</p>
+                        </div>
+                        <div class="action-buttons-compact">
+                            <button class="btn btn-emerald btn-lg" id="btn-start-image-gen">
+                                <i class="fa-solid fa-play"></i> 画像作成を開始
+                            </button>
+                            <a href="/tickekan-system/api/images/download" class="btn btn-primary btn-lg disabled" id="btn-download-images-zip">
+                                <i class="fa-solid fa-file-zipper"></i> ZIPをダウンロード
+                            </a>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- Progress / Status Area -->
+                        <div class="image-gen-status-box" id="image-gen-status-box">
+                            <div class="status-summary-grid">
+                                <div class="status-info-item">
+                                    <span class="info-label">生成ステータス:</span>
+                                    <span class="info-value" id="image-gen-status-text">
+                                        <span class="status-dot idle" id="image-gen-status-dot"></span>
+                                        <span>待機中</span>
+                                    </span>
+                                </div>
+                                <div class="status-info-item">
+                                    <span class="info-label">ZIPアーカイブ:</span>
+                                    <span class="info-value" id="image-gen-zip-info">未生成</span>
+                                </div>
+                            </div>
+
+                            <!-- Progress Bar (Shown during generation) -->
+                            <div class="progress-container mt-3 hidden" id="image-gen-progress-container">
+                                <div class="progress-bar-track">
+                                    <div class="progress-bar-fill" id="image-gen-progress-fill" style="width: 0%;"></div>
+                                </div>
+                                <div class="progress-text-row">
+                                    <span class="progress-msg" id="image-gen-progress-msg">準備中...</span>
+                                    <span class="progress-percent" id="image-gen-progress-percent">0%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2-Column Asset Management Grid -->
+                <div class="grid-2col">
+                    <!-- Column 1: Background Images (3-Slice) -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-layer-group"></i> 背景画像スライス (3-Slice) 登録 & プレビュー</h2>
+                        </div>
+                        <div class="card-body">
+                            <p class="card-desc mb-3">
+                                縦可変長画像用に <code>bg-top.png</code> (上部), <code>bg-loop.png</code> (中間ループ), <code>bg-bottom.png</code> (下部) を登録します。
+                            </p>
+
+                            <!-- Slice Upload Cards -->
+                            <div class="bg-slices-container">
+                                <!-- Top -->
+                                <div class="bg-slice-item">
+                                    <div class="bg-slice-header">
+                                        <span class="badge badge-primary">上部</span>
+                                        <strong>bg-top.png</strong>
+                                        <span class="slice-status" id="status-bg-top"><i class="fa-solid fa-spinner fa-spin"></i></span>
+                                    </div>
+                                    <div class="bg-slice-body">
+                                        <div class="slice-preview-thumb" id="thumb-bg-top">
+                                            <span>No Image</span>
+                                        </div>
+                                        <div class="slice-upload-action">
+                                            <input type="file" id="file-bg-top" accept="image/png" class="file-input-hidden">
+                                            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('file-bg-top').click()">
+                                                <i class="fa-solid fa-upload"></i> 変更
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Loop -->
+                                <div class="bg-slice-item">
+                                    <div class="bg-slice-header">
+                                        <span class="badge badge-info">中間ループ</span>
+                                        <strong>bg-loop.png</strong>
+                                        <span class="slice-status" id="status-bg-loop"><i class="fa-solid fa-spinner fa-spin"></i></span>
+                                    </div>
+                                    <div class="bg-slice-body">
+                                        <div class="slice-preview-thumb" id="thumb-bg-loop">
+                                            <span>No Image</span>
+                                        </div>
+                                        <div class="slice-upload-action">
+                                            <input type="file" id="file-bg-loop" accept="image/png" class="file-input-hidden">
+                                            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('file-bg-loop').click()">
+                                                <i class="fa-solid fa-upload"></i> 変更
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Bottom -->
+                                <div class="bg-slice-item">
+                                    <div class="bg-slice-header">
+                                        <span class="badge badge-emerald">下部</span>
+                                        <strong>bg-bottom.png</strong>
+                                        <span class="slice-status" id="status-bg-bottom"><i class="fa-solid fa-spinner fa-spin"></i></span>
+                                    </div>
+                                    <div class="bg-slice-body">
+                                        <div class="slice-preview-thumb" id="thumb-bg-bottom">
+                                            <span>No Image</span>
+                                        </div>
+                                        <div class="slice-upload-action">
+                                            <input type="file" id="file-bg-bottom" accept="image/png" class="file-input-hidden">
+                                            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('file-bg-bottom').click()">
+                                                <i class="fa-solid fa-upload"></i> 変更
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Combined Live Preview Modal/Box -->
+                            <div class="combined-preview-section mt-4">
+                                <h3><i class="fa-solid fa-eye"></i> 縦連結プレビュー</h3>
+                                <div class="combined-preview-container" id="combined-preview-container">
+                                    <img id="prev-img-top" src="" alt="Top" class="slice-img">
+                                    <img id="prev-img-loop" src="" alt="Loop" class="slice-img">
+                                    <img id="prev-img-bottom" src="" alt="Bottom" class="slice-img">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: Font Management -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-font"></i> フォントの選択 & アップロード</h2>
+                        </div>
+                        <div class="card-body">
+                            <!-- Font Selection -->
+                            <div class="form-group">
+                                <label class="form-label">使用するフォント</label>
+                                <div class="input-group">
+                                    <select id="font-select" class="form-select">
+                                        <option value="">フォントを読み込み中...</option>
+                                    </select>
+                                    <button class="btn btn-danger" id="btn-delete-font" title="選択中のカスタムフォントを削除（解除）">
+                                        <i class="fa-solid fa-trash-can"></i> 削除
+                                    </button>
+                                </div>
+                                <p class="field-hint">画像内のタイトル、明細、合計文字の描画に使用されます。（カスタムフォントのみ削除可能）</p>
+                            </div>
+
+                            <!-- Font Upload Dropzone -->
+                            <div class="form-group mt-4">
+                                <label class="form-label">新しいフォントをアップロード</label>
+                                <div class="upload-dropzone compact" id="font-dropzone">
+                                    <i class="fa-solid fa-file-arrow-up upload-icon"></i>
+                                    <h4>フォントファイルをドラッグ＆ドロップ</h4>
+                                    <p>(.ttf / .otf / .ttc 対応)</p>
+                                    <input type="file" id="font-file-input" accept=".ttf,.otf,.ttc" class="file-input-hidden">
+                                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('font-file-input').click()">
+                                        <i class="fa-solid fa-folder-open"></i> ファイルを選択
+                                    </button>
                                 </div>
                             </div>
                         </div>

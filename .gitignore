@@ -12,3 +12,8 @@ temp/
 *.log
 *.csv
 
+output_images/
+personal_images.zip
+
+fonts/
+media/

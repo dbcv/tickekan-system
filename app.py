@@ -371,6 +371,160 @@ def stream_logs():
     return Response(generate(), mimetype="text/event-stream")
 
 
+# ==========================================
+# 5. 売上画像生成 & アセット管理 API
+# ==========================================
+from image_generator_manager import image_manager
+from flask import send_file
+
+@multi_route("/api/images/config", methods=["GET"])
+def get_images_config():
+    """画像生成画面用設定・背景画像・フォント・ZIP状態を取得"""
+    cfg = image_manager.get_config()
+    return jsonify({"success": True, "config": cfg})
+
+
+@multi_route("/api/images/background/upload", methods=["POST"])
+def upload_background_image():
+    """背景スライス画像 (bg-top / bg-loop / bg-bottom) のアップロード（自動的に 640x320 にリサイズ）"""
+    bg_type = request.form.get("type", "").strip()
+    if bg_type not in ["bg-top", "bg-loop", "bg-bottom"]:
+        return jsonify({"success": False, "message": "無効な画像タイプです (bg-top, bg-loop, bg-bottom のいずれか)"}), 400
+
+    if "file" not in request.files:
+        return jsonify({"success": False, "message": "ファイルが添付されていません"}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"success": False, "message": "ファイルが選択されていません"}), 400
+
+    try:
+        from PIL import Image
+        image_dir = os.path.join(workspace_dir, "media", "image")
+        os.makedirs(image_dir, exist_ok=True)
+        save_path = os.path.join(image_dir, f"{bg_type}.png")
+
+        # 画像を開き、640x320 に自動リサイズして PNG 形式で保存
+        img = Image.open(file.stream).convert("RGBA")
+        resized_img = img.resize((640, 320), Image.Resampling.LANCZOS)
+        resized_img.save(save_path, format="PNG")
+
+        return jsonify({
+            "success": True,
+            "message": f"{bg_type}.png をアップロードし、640×320px に自動リサイズしました！",
+            "url": f"/tickekan-system/api/images/background/preview/{bg_type}.png?t={int(time.time())}"
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": f"保存・リサイズエラー: {e}"}), 500
+
+
+@multi_route("/api/images/background/preview/<filename>", methods=["GET"])
+def preview_background_image(filename):
+    """背景画像の配信"""
+    safe_name = secure_filename(filename)
+    image_dir = os.path.join(workspace_dir, "media", "image")
+    file_path = os.path.join(image_dir, safe_name)
+    if not os.path.exists(file_path):
+        return "Not found", 404
+    return send_file(file_path, mimetype="image/png")
+
+
+@multi_route("/api/images/font/upload", methods=["POST"])
+def upload_font_file():
+    """フォントファイル (.ttf, .otf, .ttc) のアップロード"""
+    if "file" not in request.files:
+        return jsonify({"success": False, "message": "ファイルが添付されていません"}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"success": False, "message": "ファイルが選択されていません"}), 400
+
+    filename = secure_filename(file.filename)
+    if not filename.lower().endswith((".ttf", ".otf", ".ttc")):
+        return jsonify({"success": False, "message": "フォントファイル (.ttf, .otf, .ttc) のみをアップロード可能です"}), 400
+
+    try:
+        fonts_dir = os.path.join(workspace_dir, "fonts")
+        os.makedirs(fonts_dir, exist_ok=True)
+        save_path = os.path.join(fonts_dir, filename)
+        file.save(save_path)
+
+        # アップロードしたフォントを選択状態にする
+        image_manager.set_font(save_path)
+
+        return jsonify({
+            "success": True,
+            "message": f"フォント '{filename}' をアップロードしました！",
+            "font_path": save_path
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": f"フォント保存エラー: {e}"}), 500
+
+
+@multi_route("/api/images/font/select", methods=["POST"])
+def select_font():
+    """使用フォントの変更"""
+    data = request.json or {}
+    font_path = data.get("font_path", "").strip()
+
+    if not font_path or not os.path.exists(font_path):
+        return jsonify({"success": False, "message": "指定されたフォントファイルが見つかりません"}), 400
+
+    success = image_manager.set_font(font_path)
+    if success:
+        return jsonify({"success": True, "message": "フォントを設定しました！"})
+    return jsonify({"success": False, "message": "フォント設定に失敗しました"}), 400
+
+
+@multi_route("/api/images/font/delete", methods=["POST"])
+def delete_font_file():
+    """カスタムフォントの削除（解除）"""
+    data = request.json or {}
+    font_path = data.get("font_path", "").strip()
+
+    if not font_path:
+        return jsonify({"success": False, "message": "フォントパスが指定されていません"}), 400
+
+    deleted = image_manager.delete_font(font_path)
+    if deleted:
+        return jsonify({"success": True, "message": "フォントを削除（解除）しました！"})
+    else:
+        return jsonify({"success": False, "message": "フォントの削除に失敗しました（システムフォントまたは存在しないファイルです）"}), 400
+
+
+@multi_route("/api/images/generate", methods=["POST"])
+def start_image_generation():
+    """画像生成処理の開始"""
+    started = image_manager.start_generation()
+    if started:
+        return jsonify({"success": True, "message": "画像生成処理を開始しました！"})
+    else:
+        return jsonify({"success": False, "message": "すでに画像生成タスクが実行中です"}), 409
+
+
+@multi_route("/api/images/generate/status", methods=["GET"])
+def get_image_generation_status():
+    """画像生成の進行ステータス取得"""
+    status = image_manager.get_status()
+    return jsonify({"success": True, "status": status})
+
+
+@multi_route("/api/images/download", methods=["GET"])
+def download_images_zip():
+    """生成された personal_images.zip のダウンロード"""
+    zip_path = os.path.join(workspace_dir, "personal_images.zip")
+    if not os.path.exists(zip_path):
+        return "ZIPファイルが存在しません。先に画像を生成してください。", 404
+
+    return send_file(
+        zip_path,
+        as_attachment=True,
+        download_name="personal_images.zip",
+        mimetype="application/zip",
+        conditional=False
+    )
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, threaded=True, debug=False)
