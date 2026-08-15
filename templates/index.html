@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoTicket - Web Control Panel</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;600;700&display=swap"
+        rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Custom Style -->
+    <link rel="stylesheet" href="./static/style.css">
+</head>
+
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon">
+                    <i class="fa-solid fa-ticket-simple"></i>
+                </div>
+                <div class="brand-text">
+                    <h2>AutoTicket</h2>
+                    <span class="version">v2.0 Web System</span>
+                </div>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="tab-console">
+                    <i class="fa-solid fa-circle-play"></i>
+                    <span>実行コントロール</span>
+                </button>
+                <button class="nav-item" data-tab="tab-env">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>.env エディタ</span>
+                </button>
+                <button class="nav-item" data-tab="tab-account">
+                    <i class="fa-solid fa-key"></i>
+                    <span>サービスアカウント</span>
+                </button>
+                <button class="nav-item" data-tab="tab-cron">
+                    <i class="fa-solid fa-clock"></i>
+                    <span>定期実行 (Cron)</span>
+                </button>
+            </nav>
+
+            <div class="server-info">
+                <div class="server-status">
+                    <span class="status-dot idle" id="global-status-dot"></span>
+                    <span class="status-text" id="global-status-text">待機中</span>
+                </div>
+                <p class="server-type"><i class="fa-solid fa-server"></i> レンタルサーバーモード</p>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header Bar -->
+            <header class="top-header">
+                <div class="page-title">
+                    <h1 id="active-tab-title">実行コントロール</h1>
+                    <p id="active-tab-desc">AutoTicket の手動実行・ステータス監視・R7ログイン対話入力</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-emerald" id="btn-header-run">
+                        <i class="fa-solid fa-play"></i> 今すぐ実行
+                    </button>
+                </div>
+            </header>
+
+            <!-- TAB 1: EXECUTION CONTROL -->
+            <section class="tab-content active" id="tab-console">
+                <!-- R7 Input Notice Banner (Only shown when input is required) -->
+                <div class="input-alert-card hidden" id="r7-input-banner">
+                    <div class="alert-icon pulse">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div class="alert-body">
+                        <h3><i class="fa-solid fa-envelope"></i> R7 ログインURLの入力が必要です！</h3>
+                        <p id="r7-prompt-message">メールアドレスに届いたログインURL（またはoobCode）を入力して送信してください。</p>
+                    </div>
+                </div>
+
+                <!-- Execution Control & Status Card -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-microchip"></i> プロセス実行コントロール</h2>
+                        <div class="terminal-badge" id="terminal-job-status">IDLE</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="status-summary-grid">
+                            <div class="status-info-item">
+                                <span class="info-label">現在のステータス:</span>
+                                <span class="info-value" id="current-status-display">
+                                    <span class="status-dot idle" id="status-badge-dot"></span>
+                                    <span id="status-badge-text">待機中</span>
+                                </span>
+                            </div>
+                            <div class="status-info-item">
+                                <span class="info-label">前回実行結果:</span>
+                                <span class="info-value" id="last-run-status-text">未実行</span>
+                            </div>
+                        </div>
+
+                        <div class="action-buttons mt-4">
+                            <button class="btn btn-emerald btn-lg" id="btn-run">
+                                <i class="fa-solid fa-play"></i> 今すぐ実行
+                            </button>
+                            <button class="btn btn-danger btn-lg" id="btn-stop" disabled>
+                                <i class="fa-solid fa-square"></i> 強制停止
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interactive R7 URL Input Box (Hidden until input is required) -->
+                <div class="input-form-card hidden" id="r7-input-container">
+                    <div class="input-header">
+                        <span><i class="fa-solid fa-keyboard"></i> R7 ログインURL対話入力</span>
+                        <span class="badge badge-inactive" id="r7-input-status-badge">入力要請中</span>
+                    </div>
+                    <div class="input-group">
+                        <input type="text" id="r7-url-input"
+                            placeholder="例: https://tools.r7ticket.jp/mail/new?oobCode=..." disabled autocomplete="off">
+                        <button class="btn btn-primary" id="btn-submit-url" disabled>
+                            <i class="fa-solid fa-paper-plane"></i> URL送信
+                        </button>
+                    </div>
+                    <p class="input-hint" id="r7-input-hint">※ メールボックスに届いたログインURLを入力して「URL送信」を押してください。</p>
+                </div>
+            </section>
+
+            <!-- TAB 2: .ENV EDITOR -->
+            <section class="tab-content" id="tab-env">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h2><i class="fa-solid fa-sliders"></i> .env 環境変数設定</h2>
+                            <p class="card-desc">安全のため、項目名（キー）は固定です。右側の設定値 (Value) のみを変更して保存してください。</p>
+                        </div>
+                        <button class="btn btn-emerald" id="btn-save-env">
+                            <i class="fa-solid fa-floppy-disk"></i> .env を保存
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <form id="env-editor-form">
+                            <div class="env-grid" id="env-fields-list">
+                                <!-- Dynamic env fields generated by JS -->
+                                <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i>
+                                    設定情報を読み込み中...</div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 3: SERVICE ACCOUNT UPLOAD -->
+            <section class="tab-content" id="tab-account">
+                <div class="grid-2col">
+                    <!-- Status Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-shield-halved"></i> 現在の認証ファイル状態</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="sa-status-box" id="sa-status-box">
+                                <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i>
+                                    認証情報を確認中...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Upload Form Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-cloud-arrow-up"></i> service_account.json アップロード</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="upload-dropzone" id="upload-dropzone">
+                                <i class="fa-solid fa-file-code upload-icon"></i>
+                                <h3>ここに JSON ファイルをドラッグ＆ドロップ</h3>
+                                <p>またはファイルを選択してください</p>
+                                <input type="file" id="sa-file-input" accept=".json" class="file-input-hidden">
+                                <button class="btn btn-secondary"
+                                    onclick="document.getElementById('sa-file-input').click()">
+                                    <i class="fa-solid fa-folder-open"></i> ファイルを選択
+                                </button>
+                            </div>
+                            <div class="selected-file-info hidden" id="selected-file-info">
+                                <span class="file-name" id="selected-file-name"></span>
+                                <button class="btn btn-emerald" id="btn-upload-sa">
+                                    <i class="fa-solid fa-upload"></i> アップロード実行
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 4: PERIODIC EXECUTION (CRON) -->
+            <section class="tab-content" id="tab-cron">
+                <div class="grid-2col">
+                    <!-- Settings Form Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-calendar-check"></i> 定期実行の設定</h2>
+                        </div>
+                        <div class="card-body">
+                            <form id="cron-form">
+                                <div class="form-group">
+                                    <label class="form-label">定期実行ステータス</label>
+                                    <div class="toggle-group">
+                                        <label class="toggle-switch lg">
+                                            <input type="checkbox" id="cron-enable-toggle">
+                                            <span class="slider"></span>
+                                        </label>
+                                        <span class="toggle-status-text" id="cron-status-label">無効 (停止中)</span>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">実行頻度 (タイミング)</label>
+                                    <select id="cron-interval-type" class="form-select">
+                                        <option value="daily" selected>毎日指定時刻</option>
+                                        <option value="every_n_hours">N時間ごと</option>
+                                        <option value="every_n_minutes">N分ごと</option>
+                                        <option value="custom">カスタム Cron 式</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group hidden" id="cron-value-container">
+                                    <label class="form-label" id="cron-value-label">実行間隔 (N)</label>
+                                    <input type="number" id="cron-interval-value" class="form-input" min="1" max="59" value="1">
+                                    <p class="field-hint" id="cron-value-hint">例: 2 ＝ 2時間ごと / 15 ＝ 15分ごと</p>
+                                </div>
+
+                                <div class="form-row" id="cron-time-inputs">
+                                    <div class="form-group col" id="cron-hour-group">
+                                        <label class="form-label">実行時 (Hour: 0-23)</label>
+                                        <input type="number" id="cron-hour" class="form-input" min="0" max="23"
+                                            value="9">
+                                    </div>
+                                    <div class="form-group col" id="cron-minute-group">
+                                        <label class="form-label">実行分 (Minute: 0-59)</label>
+                                        <input type="number" id="cron-minute" class="form-input" min="0" max="59"
+                                            value="0">
+                                    </div>
+                                </div>
+
+                                <div class="form-group hidden" id="cron-custom-input">
+                                    <label class="form-label">Cron 表現式 (分 時 日 月 曜日)</label>
+                                    <input type="text" id="cron-custom-expr" class="form-input" placeholder="0 9 * * *">
+                                    <p class="field-hint">例: `0 9 * * *` (毎日朝9時), `*/15 * * * *` (15分ごと)</p>
+                                </div>
+
+                                <button type="submit" class="btn btn-emerald w-100" id="btn-save-cron">
+                                    <i class="fa-solid fa-floppy-disk"></i> 定期実行設定を保存・更新
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Rental Server Cron Guidance Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fa-solid fa-server"></i> レンタルサーバー設定ガイド</h2>
+                        </div>
+                        <div class="card-body">
+                            <p class="card-desc">
+                                レンタルサーバー（XServer, さくら, cPanel等）の管理画面でCronを設定する場合は、以下のいずれかの方法を利用してください。
+                            </p>
+
+                            <div class="guide-box">
+                                <h3><i class="fa-solid fa-terminal"></i> 方法1: サーバー管理画面のCron設定（推奨）</h3>
+                                <p>サーバーパネルの「CRON設定」に以下のコマンドをコピー＆ペーストしてください：</p>
+                                <div class="code-copy-box">
+                                    <code
+                                        id="cron-cmd-snippet">0 9 * * * cd /path/to/project && python AutoTicket.py</code>
+                                    <button class="btn-icon" onclick="copyToClipboard('cron-cmd-snippet')"><i
+                                            class="fa-solid fa-copy"></i></button>
+                                </div>
+                            </div>
+
+                            <div class="guide-box">
+                                <h3><i class="fa-solid fa-globe"></i> 方法2: Web Cron / 外部トリガーURL</h3>
+                                <p>cron-job.org や サーバーのWebCron機能から定期実行を呼ぶURL：</p>
+                                <div class="code-copy-box">
+                                    <code id="cron-webhook-url">http://.../api/cron/run?token=...</code>
+                                    <button class="btn-icon" onclick="copyToClipboard('cron-webhook-url')"><i
+                                            class="fa-solid fa-copy"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- JavaScript Application Logic -->
+    <script src="./static/app.js"></script>
+</body>
+
+</html>

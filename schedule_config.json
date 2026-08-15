@@ -1,0 +1,10 @@
+{
+  "enabled": false,
+  "interval_type": "every_n_minutes",
+  "hour": 9,
+  "minute": 30,
+  "custom_cron": "0 9 * * *",
+  "webhook_token": "64ee34d38feecb7923957dc4aef5ff04",
+  "updated_at": "2026-08-14 09:43:39",
+  "interval_value": 30
+}
