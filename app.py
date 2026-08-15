@@ -1,16 +1,27 @@
 import os
 import json
 import time
-import json
-from flask import Flask, render_template, request, jsonify, Response, send_from_directory
+from datetime import timedelta
+from flask import Flask, render_template, request, jsonify, Response, send_from_directory, send_file, session, redirect, url_for
 from werkzeug.utils import secure_filename
 
 from process_runner import runner, workspace_dir
 from cron_manager import cron_manager
+from i18n import t, get_translations
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["SECRET_KEY"] = "autoticket-secret-key-2026"
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB max upload
+
+
+@app.context_processor
+def inject_i18n():
+    """Jinja2 テンプレート内で {{ t('key') }} を利用可能にする"""
+    return {
+        "t": t,
+        "translations": get_translations()
+    }
 
 ENV_FILE = os.path.join(workspace_dir, ".env")
 ENV_EXAMPLE_FILE = os.path.join(workspace_dir, ".env.example")
@@ -92,21 +103,46 @@ def save_env_file(new_values: dict) -> bool:
     return True
 
 
+def get_admin_credentials():
+    """環境変数または .env から管理者アカウント情報を取得"""
+    admin_user = os.getenv("DASHBOARD_AUTH_USER", "TickekanMaster")
+    admin_pass = os.getenv("DASHBOARD_AUTH_PASSWORD", "A6F8FXBG")
+
+    if os.path.exists(ENV_FILE):
+        try:
+            with open(ENV_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k, v = k.strip(), v.strip()
+                        if k == "DASHBOARD_AUTH_USER":
+                            admin_user = v
+                        elif k == "DASHBOARD_AUTH_PASSWORD":
+                            admin_pass = v
+        except Exception:
+            pass
+    return admin_user, admin_pass
+
+
 def multi_route(rule, **options):
     """
-    /api/... および /tickekan-system/api/... の両方のプレフィックスにルートを登録するデコレータ
+    通常パスおよび /tickekan-system プレフィックス付きパスの両方にルートを登録するデコレータ
     """
     def decorator(f):
         endpoint = options.pop("endpoint", None)
         rules = [rule]
-        if rule.startswith("/api"):
-            rules.append("/tickekan-system" + rule)
-        elif rule == "/":
-            rules.append("/tickekan-system")
-            rules.append("/tickekan-system/")
+        if rule.startswith("/"):
+            prefixed = "/tickekan-system" + rule
+            if prefixed not in rules:
+                rules.append(prefixed)
+            if rule == "/":
+                if "/tickekan-system" not in rules:
+                    rules.append("/tickekan-system")
 
         for idx, r in enumerate(rules):
-            ep = (endpoint or f.__name__) if idx == 0 else f"{endpoint or f.__name__}_{idx}"
+            clean_r = r.replace('/', '_').replace('<', '').replace('>', '').replace(':', '_').strip('_')
+            ep = (endpoint or f.__name__) if idx == 0 else f"{endpoint or f.__name__}_{idx}_{clean_r}"
             app.add_url_rule(r, ep, f, **options)
         return f
     return decorator
@@ -115,6 +151,78 @@ def multi_route(rule, **options):
 @app.route("/tickekan-system/static/<path:filename>")
 def serve_tickekan_static(filename):
     return send_from_directory(app.static_folder, filename)
+
+
+@app.before_request
+def check_dashboard_auth():
+    """
+    ダッシュボード管理領域へのセッション認証チェック
+    """
+    path = request.path
+
+    # 静的ファイル・マニュアル画像は認証不要
+    if path.startswith("/static/") or path.startswith("/tickekan-system/static/") or "/docs/images/" in path:
+        return None
+
+    # ログイン・ログアウト画面・処理は認証不要
+    if path.endswith("/login") or path.endswith("/logout"):
+        return None
+
+    # 劇団員別個人ステータス画面・APIは認証不要
+    if "/status/" in path:
+        return None
+
+    # 定期実行 Webhook エンドポイントは認証不要（トークン認証）
+    if path.endswith("/api/cron/run"):
+        return None
+
+    # セッションに管理者ログインフラグがあるかチェック
+    if session.get("is_admin"):
+        return None
+
+    # 未ログイン時: APIリクエストなら 401 JSON、通常ページなら ./login へリダイレクト
+    if "/api/" in path:
+        return jsonify({
+            "success": False,
+            "message": "ログインセッションが切れているか、ログインしていません。",
+            "redirect": "./login"
+        }), 401
+
+    return redirect("./login")
+
+
+@multi_route("/login", methods=["GET", "POST"])
+def login():
+    """管理者ログイン画面 / 認証処理"""
+    if request.method == "GET":
+        if session.get("is_admin"):
+            return redirect("./")
+        return render_template("login.html")
+
+    # POST 認証処理
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "").strip()
+
+    admin_user, admin_pass = get_admin_credentials()
+
+    if username == admin_user and password == admin_pass:
+        session.permanent = True
+        session["is_admin"] = True
+        session["user"] = username
+        return redirect("./")
+    else:
+        return render_template(
+            "login.html",
+            error="ユーザー名またはパスワードが正しくありません。",
+            username=username
+        ), 401
+
+
+@multi_route("/logout", methods=["GET", "POST"])
+def logout():
+    """ログアウト処理"""
+    session.clear()
+    return redirect("./login")
 
 
 @multi_route("/")
@@ -386,7 +494,7 @@ def get_images_config():
 
 @multi_route("/api/images/background/upload", methods=["POST"])
 def upload_background_image():
-    """背景スライス画像 (bg-top / bg-loop / bg-bottom) のアップロード（自動的に 640x320 にリサイズ）"""
+    """背景スライス画像 (bg-top / bg-loop / bg-bottom) のアップロード（自動リネーム＆PNGコンバート）"""
     bg_type = request.form.get("type", "").strip()
     if bg_type not in ["bg-top", "bg-loop", "bg-bottom"]:
         return jsonify({"success": False, "message": "無効な画像タイプです (bg-top, bg-loop, bg-bottom のいずれか)"}), 400
@@ -400,22 +508,31 @@ def upload_background_image():
 
     try:
         from PIL import Image
+        import io
+
+        # 画像データをメモリに読み込み
+        img_bytes = file.read()
+        if not img_bytes:
+            return jsonify({"success": False, "message": "ファイルデータが空です"}), 400
+
+        # 画像を開いて検証・RGBAのPNGに変換
+        img = Image.open(io.BytesIO(img_bytes))
+        img_rgba = img.convert("RGBA")
+
+        # 変換成功後にのみ保存先ディレクトリを作成して保存
         image_dir = os.path.join(workspace_dir, "media", "image")
         os.makedirs(image_dir, exist_ok=True)
         save_path = os.path.join(image_dir, f"{bg_type}.png")
 
-        # 画像を開き、640x320 に自動リサイズして PNG 形式で保存
-        img = Image.open(file.stream).convert("RGBA")
-        resized_img = img.resize((640, 320), Image.Resampling.LANCZOS)
-        resized_img.save(save_path, format="PNG")
+        img_rgba.save(save_path, format="PNG")
 
         return jsonify({
             "success": True,
-            "message": f"{bg_type}.png をアップロードし、640×320px に自動リサイズしました！",
+            "message": f"{bg_type}.png としてPNG形式で正常に保存されました！",
             "url": f"/tickekan-system/api/images/background/preview/{bg_type}.png?t={int(time.time())}"
         })
     except Exception as e:
-        return jsonify({"success": False, "message": f"保存・リサイズエラー: {e}"}), 500
+        return jsonify({"success": False, "message": f"画像の読み込みまたはPNG変換に失敗しました: {e}"}), 400
 
 
 @multi_route("/api/images/background/preview/<filename>", methods=["GET"])
@@ -523,6 +640,97 @@ def download_images_zip():
         mimetype="application/zip",
         conditional=False
     )
+
+
+# ==========================================
+# 6. 個人別チケット売上確認 (Status) API & Webページ
+# ==========================================
+from status_service import status_service
+
+@multi_route("/status/<name>/<user_id>", methods=["GET"])
+@multi_route("/status/<name>/<user_id>/", methods=["GET"])
+def view_member_status(name, user_id):
+    """個人別チケット売上確認Webページ"""
+    force_refresh = request.args.get("refresh", "0") in ("1", "true")
+    res = status_service.get_user_status(name, user_id, force_refresh=force_refresh)
+
+    if not res.get("valid"):
+        return render_template(
+            "status.html",
+            valid=False,
+            error=res.get("error", "アクセス権限がありません。"),
+            name=name
+        ), 403
+
+    return render_template(
+        "status.html",
+        valid=True,
+        name=res.get("name"),
+        rows=res.get("rows", []),
+        total_count=res.get("total_count", 0),
+        reservation_count=res.get("reservation_count", 0),
+        stage_totals=res.get("stage_totals", {}),
+        last_updated=res.get("last_updated", "")
+    )
+
+
+@multi_route("/api/status/<name>/<user_id>", methods=["GET"])
+@multi_route("/api/status/<name>/<user_id>/", methods=["GET"])
+def api_member_status(name, user_id):
+    """個人別チケット売上ステータス取得 JSON API"""
+    force_refresh = request.args.get("refresh", "0") in ("1", "true")
+    res = status_service.get_user_status(name, user_id, force_refresh=force_refresh)
+
+    if not res.get("valid"):
+        return jsonify({
+            "success": False,
+            "message": res.get("error", "認証に失敗しました。"),
+            "status": res
+        }), 403
+
+    return jsonify({
+        "success": True,
+        "status": res
+    })
+
+
+# ==========================================
+# 7. システム使い方マニュアル (README.md) API & 画像配信
+# ==========================================
+README_FILE = os.path.join(workspace_dir, "README.md")
+DOCS_IMAGES_DIR = os.path.join(workspace_dir, "docs", "images")
+
+@multi_route("/api/readme", methods=["GET"])
+def get_readme_content():
+    """プロジェクトルートの README.md を取得する"""
+    if not os.path.exists(README_FILE):
+        return jsonify({
+            "success": False,
+            "message": "README.md が見つかりません。",
+            "content": "# 使い方マニュアル\n\nREADME.md がまだ作成されていません。"
+        }), 404
+
+    try:
+        with open(README_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+        return jsonify({
+            "success": True,
+            "content": content
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"README.md の読み込みに失敗しました: {e}",
+            "content": ""
+        }), 500
+
+
+@multi_route("/docs/images/<path:filename>", methods=["GET"])
+def serve_docs_images(filename):
+    """マニュアルで使用する画像ファイルを安全に配信する"""
+    if not os.path.exists(DOCS_IMAGES_DIR):
+        return "Not found", 404
+    return send_from_directory(DOCS_IMAGES_DIR, filename)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AutoTicket - Web Control Panel</title>
+    <title>{{ t('common.app_name') }} - {{ t('login.title') }}</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,54 +12,80 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;600;700&display=swap"
         rel="stylesheet">
     <!-- FontAwesome Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.3.1/css/all.min.css">
     <!-- Custom Style -->
-    <link rel="stylesheet" href="./static/style.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Marked.js & DOMPurify for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+    <script id="i18n-data" type="application/json">
+        {{ translations|tojson }}
+    </script>
 </head>
 
-<body class="dark-theme">
+<body>
     <div class="app-container">
+        <!-- Sidebar Backdrop Overlay (Mobile) -->
+        <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
         <!-- Sidebar Navigation -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
             <div class="brand">
                 <div class="brand-icon">
                     <i class="fa-solid fa-ticket-simple"></i>
                 </div>
                 <div class="brand-text">
-                    <h2>AutoTicket</h2>
-                    <span class="version">v2.0 Web System</span>
+                    <h2>{{ t('common.app_name') }}</h2>
+                    <span class="version">{{ t('common.app_version') }}</span>
                 </div>
+                <button class="sidebar-close-btn" id="btn-sidebar-close" aria-label="Close menu">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
             </div>
 
             <nav class="nav-menu">
                 <button class="nav-item active" data-tab="tab-console">
                     <i class="fa-solid fa-circle-play"></i>
-                    <span>実行コントロール</span>
+                    <span>{{ t('dashboard.tabs.console') }}</span>
                 </button>
                 <button class="nav-item" data-tab="tab-images">
                     <i class="fa-solid fa-images"></i>
-                    <span>売上画像生成</span>
+                    <span>{{ t('dashboard.tabs.images') }}</span>
                 </button>
                 <button class="nav-item" data-tab="tab-env">
                     <i class="fa-solid fa-sliders"></i>
-                    <span>.env エディタ</span>
+                    <span>{{ t('dashboard.tabs.env') }}</span>
                 </button>
                 <button class="nav-item" data-tab="tab-account">
                     <i class="fa-solid fa-key"></i>
-                    <span>サービスアカウント</span>
+                    <span>{{ t('dashboard.tabs.account') }}</span>
                 </button>
                 <button class="nav-item" data-tab="tab-cron">
                     <i class="fa-solid fa-clock"></i>
-                    <span>定期実行 (Cron)</span>
+                    <span>{{ t('dashboard.tabs.cron') }}</span>
+                </button>
+                <button class="nav-item" data-tab="tab-usage">
+                    <i class="fa-solid fa-book-open"></i>
+                    <span>{{ t('dashboard.tabs.usage') }}</span>
                 </button>
             </nav>
 
             <div class="server-info">
                 <div class="server-status">
                     <span class="status-dot idle" id="global-status-dot"></span>
-                    <span class="status-text" id="global-status-text">待機中</span>
+                    <span class="status-text" id="global-status-text">{{ t('common.status_idle') }}</span>
                 </div>
-                <p class="server-type"><i class="fa-solid fa-server"></i> レンタルサーバーモード</p>
+                <p class="server-type"><i class="fa-solid fa-server"></i> {{ t('common.server_mode') }}</p>
+                <div class="user-logout-section">
+                    <div class="admin-badge-info">
+                        <i class="fa-solid fa-user-shield"></i>
+                        <span>{{ t('common.admin') }}</span>
+                    </div>
+                    <a href="./logout" class="sidebar-logout-btn">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                        <span>{{ t('common.logout') }}</span>
+                    </a>
+                </div>
             </div>
         </aside>
 
@@ -67,14 +93,14 @@
         <main class="main-content">
             <!-- Header Bar -->
             <header class="top-header">
-                <div class="page-title">
-                    <h1 id="active-tab-title">実行コントロール</h1>
-                    <p id="active-tab-desc">AutoTicket の手動実行・ステータス監視・R7ログイン対話入力</p>
-                </div>
-                <div class="header-actions">
-                    <button class="btn btn-emerald" id="btn-header-run">
-                        <i class="fa-solid fa-play"></i> 今すぐ実行
+                <div class="header-left">
+                    <button class="hamburger-btn" id="btn-hamburger" aria-label="Open menu">
+                        <i class="fa-solid fa-bars"></i>
                     </button>
+                    <div class="page-title">
+                        <h1 id="active-tab-title">{{ t('dashboard.tabs.console') }}</h1>
+                        <p id="active-tab-desc">{{ t('dashboard.tabs.console_desc') }}</p>
+                    </div>
                 </div>
             </header>
 
@@ -86,38 +112,40 @@
                         <i class="fa-solid fa-triangle-exclamation"></i>
                     </div>
                     <div class="alert-body">
-                        <h3><i class="fa-solid fa-envelope"></i> R7 ログインURLの入力が必要です！</h3>
-                        <p id="r7-prompt-message">メールアドレスに届いたログインURL（またはoobCode）を入力して送信してください。</p>
+                        <h3><i class="fa-solid fa-envelope"></i> {{ t('dashboard.console.r7_alert_title') }}</h3>
+                        <p id="r7-prompt-message">{{ t('dashboard.console.r7_alert_desc') }}</p>
                     </div>
                 </div>
 
                 <!-- Execution Control & Status Card -->
                 <div class="card mb-4">
                     <div class="card-header">
-                        <h2><i class="fa-solid fa-microchip"></i> プロセス実行コントロール</h2>
+                        <h2><i class="fa-solid fa-microchip"></i> {{ t('dashboard.console.process_control_title') }}
+                        </h2>
                         <div class="terminal-badge" id="terminal-job-status">IDLE</div>
                     </div>
                     <div class="card-body">
                         <div class="status-summary-grid">
                             <div class="status-info-item">
-                                <span class="info-label">現在のステータス:</span>
+                                <span class="info-label">{{ t('common.current_status') }}:</span>
                                 <span class="info-value" id="current-status-display">
                                     <span class="status-dot idle" id="status-badge-dot"></span>
-                                    <span id="status-badge-text">待機中</span>
+                                    <span id="status-badge-text">{{ t('common.status_idle') }}</span>
                                 </span>
                             </div>
                             <div class="status-info-item">
-                                <span class="info-label">前回実行結果:</span>
-                                <span class="info-value" id="last-run-status-text">未実行</span>
+                                <span class="info-label">{{ t('common.last_run') }}:</span>
+                                <span class="info-value" id="last-run-status-text">{{ t('common.status_unexecuted')
+                                    }}</span>
                             </div>
                         </div>
 
                         <div class="action-buttons mt-4">
                             <button class="btn btn-emerald btn-lg" id="btn-run">
-                                <i class="fa-solid fa-play"></i> 今すぐ実行
+                                <i class="fa-solid fa-play"></i> {{ t('dashboard.console.run_btn') }}
                             </button>
                             <button class="btn btn-danger btn-lg" id="btn-stop" disabled>
-                                <i class="fa-solid fa-square"></i> 強制停止
+                                <i class="fa-solid fa-square"></i> {{ t('dashboard.console.stop_btn') }}
                             </button>
                         </div>
                     </div>
@@ -126,17 +154,18 @@
                 <!-- Interactive R7 URL Input Box (Hidden until input is required) -->
                 <div class="input-form-card hidden" id="r7-input-container">
                     <div class="input-header">
-                        <span><i class="fa-solid fa-keyboard"></i> R7 ログインURL対話入力</span>
-                        <span class="badge badge-inactive" id="r7-input-status-badge">入力要請中</span>
+                        <span><i class="fa-solid fa-keyboard"></i> {{ t('dashboard.console.r7_alert_title') }}</span>
+                        <span class="badge badge-inactive" id="r7-input-status-badge">{{
+                            t('dashboard.console.input_required') }}</span>
                     </div>
                     <div class="input-group">
                         <input type="text" id="r7-url-input"
-                            placeholder="例: https://tools.r7ticket.jp/mail/new?oobCode=..." disabled autocomplete="off">
+                            placeholder="{{ t('dashboard.console.r7_input_placeholder') }}" disabled autocomplete="off">
                         <button class="btn btn-primary" id="btn-submit-url" disabled>
-                            <i class="fa-solid fa-paper-plane"></i> URL送信
+                            <i class="fa-solid fa-paper-plane"></i> {{ t('dashboard.console.r7_submit_btn') }}
                         </button>
                     </div>
-                    <p class="input-hint" id="r7-input-hint">※ メールボックスに届いたログインURLを入力して「URL送信」を押してください。</p>
+                    <p class="input-hint" id="r7-input-hint">※ {{ t('dashboard.console.r7_alert_desc') }}</p>
                 </div>
             </section>
 
@@ -145,11 +174,11 @@
                 <div class="card">
                     <div class="card-header">
                         <div>
-                            <h2><i class="fa-solid fa-sliders"></i> .env 環境変数設定</h2>
-                            <p class="card-desc">安全のため、項目名（キー）は固定です。右側の設定値 (Value) のみを変更して保存してください。</p>
+                            <h2><i class="fa-solid fa-sliders"></i> {{ t('dashboard.env.title') }}</h2>
+                            <p class="card-desc">{{ t('dashboard.env.desc') }}</p>
                         </div>
                         <button class="btn btn-emerald" id="btn-save-env">
-                            <i class="fa-solid fa-floppy-disk"></i> .env を保存
+                            <i class="fa-solid fa-floppy-disk"></i> {{ t('dashboard.env.save_btn') }}
                         </button>
                     </div>
                     <div class="card-body">
@@ -157,7 +186,7 @@
                             <div class="env-grid" id="env-fields-list">
                                 <!-- Dynamic env fields generated by JS -->
                                 <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i>
-                                    設定情報を読み込み中...</div>
+                                    {{ t('common.loading') }}</div>
                             </div>
                         </form>
                     </div>
@@ -170,12 +199,12 @@
                     <!-- Status Card -->
                     <div class="card">
                         <div class="card-header">
-                            <h2><i class="fa-solid fa-shield-halved"></i> 現在の認証ファイル状態</h2>
+                            <h2><i class="fa-solid fa-shield-halved"></i> {{ t('dashboard.account.status_title') }}</h2>
                         </div>
                         <div class="card-body">
                             <div class="sa-status-box" id="sa-status-box">
                                 <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i>
-                                    認証情報を確認中...</div>
+                                    {{ t('common.loading') }}</div>
                             </div>
                         </div>
                     </div>
@@ -183,23 +212,24 @@
                     <!-- Upload Form Card -->
                     <div class="card">
                         <div class="card-header">
-                            <h2><i class="fa-solid fa-cloud-arrow-up"></i> service_account.json アップロード</h2>
+                            <h2><i class="fa-solid fa-cloud-arrow-up"></i> {{ t('dashboard.account.upload_title') }}
+                            </h2>
                         </div>
                         <div class="card-body">
                             <div class="upload-dropzone" id="upload-dropzone">
                                 <i class="fa-solid fa-file-code upload-icon"></i>
-                                <h3>ここに JSON ファイルをドラッグ＆ドロップ</h3>
-                                <p>またはファイルを選択してください</p>
+                                <h3>{{ t('dashboard.account.drag_drop_json') }}</h3>
+                                <p>{{ t('dashboard.account.or_select_file') }}</p>
                                 <input type="file" id="sa-file-input" accept=".json" class="file-input-hidden">
                                 <button class="btn btn-secondary"
                                     onclick="document.getElementById('sa-file-input').click()">
-                                    <i class="fa-solid fa-folder-open"></i> ファイルを選択
+                                    <i class="fa-solid fa-folder-open"></i> {{ t('dashboard.account.select_file') }}
                                 </button>
                             </div>
                             <div class="selected-file-info hidden" id="selected-file-info">
                                 <span class="file-name" id="selected-file-name"></span>
                                 <button class="btn btn-emerald" id="btn-upload-sa">
-                                    <i class="fa-solid fa-upload"></i> アップロード実行
+                                    <i class="fa-solid fa-upload"></i> {{ t('common.upload') }}
                                 </button>
                             </div>
                         </div>
@@ -209,98 +239,65 @@
 
             <!-- TAB 4: PERIODIC EXECUTION (CRON) -->
             <section class="tab-content" id="tab-cron">
-                <div class="grid-2col">
-                    <!-- Settings Form Card -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h2><i class="fa-solid fa-calendar-check"></i> 定期実行の設定</h2>
-                        </div>
-                        <div class="card-body">
-                            <form id="cron-form">
-                                <div class="form-group">
-                                    <label class="form-label">定期実行ステータス</label>
-                                    <div class="toggle-group">
-                                        <label class="toggle-switch lg">
-                                            <input type="checkbox" id="cron-enable-toggle">
-                                            <span class="slider"></span>
-                                        </label>
-                                        <span class="toggle-status-text" id="cron-status-label">無効 (停止中)</span>
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label class="form-label">実行頻度 (タイミング)</label>
-                                    <select id="cron-interval-type" class="form-select">
-                                        <option value="daily" selected>毎日指定時刻</option>
-                                        <option value="every_n_hours">N時間ごと</option>
-                                        <option value="every_n_minutes">N分ごと</option>
-                                        <option value="custom">カスタム Cron 式</option>
-                                    </select>
-                                </div>
-
-                                <div class="form-group hidden" id="cron-value-container">
-                                    <label class="form-label" id="cron-value-label">実行間隔 (N)</label>
-                                    <input type="number" id="cron-interval-value" class="form-input" min="1" max="59" value="1">
-                                    <p class="field-hint" id="cron-value-hint">例: 2 ＝ 2時間ごと / 15 ＝ 15分ごと</p>
-                                </div>
-
-                                <div class="form-row" id="cron-time-inputs">
-                                    <div class="form-group col" id="cron-hour-group">
-                                        <label class="form-label">実行時 (Hour: 0-23)</label>
-                                        <input type="number" id="cron-hour" class="form-input" min="0" max="23"
-                                            value="9">
-                                    </div>
-                                    <div class="form-group col" id="cron-minute-group">
-                                        <label class="form-label">実行分 (Minute: 0-59)</label>
-                                        <input type="number" id="cron-minute" class="form-input" min="0" max="59"
-                                            value="0">
-                                    </div>
-                                </div>
-
-                                <div class="form-group hidden" id="cron-custom-input">
-                                    <label class="form-label">Cron 表現式 (分 時 日 月 曜日)</label>
-                                    <input type="text" id="cron-custom-expr" class="form-input" placeholder="0 9 * * *">
-                                    <p class="field-hint">例: `0 9 * * *` (毎日朝9時), `*/15 * * * *` (15分ごと)</p>
-                                </div>
-
-                                <button type="submit" class="btn btn-emerald w-100" id="btn-save-cron">
-                                    <i class="fa-solid fa-floppy-disk"></i> 定期実行設定を保存・更新
-                                </button>
-                            </form>
-                        </div>
+                <div class="card" style="max-width: 680px; margin: 0 auto;">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-calendar-check"></i> {{ t('dashboard.cron.title') }}</h2>
                     </div>
-
-                    <!-- Rental Server Cron Guidance Card -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h2><i class="fa-solid fa-server"></i> レンタルサーバー設定ガイド</h2>
-                        </div>
-                        <div class="card-body">
-                            <p class="card-desc">
-                                レンタルサーバー（XServer, さくら, cPanel等）の管理画面でCronを設定する場合は、以下のいずれかの方法を利用してください。
-                            </p>
-
-                            <div class="guide-box">
-                                <h3><i class="fa-solid fa-terminal"></i> 方法1: サーバー管理画面のCron設定（推奨）</h3>
-                                <p>サーバーパネルの「CRON設定」に以下のコマンドをコピー＆ペーストしてください：</p>
-                                <div class="code-copy-box">
-                                    <code
-                                        id="cron-cmd-snippet">0 9 * * * cd /path/to/project && python AutoTicket.py</code>
-                                    <button class="btn-icon" onclick="copyToClipboard('cron-cmd-snippet')"><i
-                                            class="fa-solid fa-copy"></i></button>
+                    <div class="card-body">
+                        <form id="cron-form">
+                            <div class="form-group">
+                                <label class="form-label">{{ t('dashboard.cron.status_label') }}</label>
+                                <div class="toggle-group">
+                                    <label class="toggle-switch lg">
+                                        <input type="checkbox" id="cron-enable-toggle">
+                                        <span class="slider"></span>
+                                    </label>
+                                    <span class="toggle-status-text" id="cron-status-label">{{
+                                        t('dashboard.cron.status_disabled') }}</span>
                                 </div>
                             </div>
 
-                            <div class="guide-box">
-                                <h3><i class="fa-solid fa-globe"></i> 方法2: Web Cron / 外部トリガーURL</h3>
-                                <p>cron-job.org や サーバーのWebCron機能から定期実行を呼ぶURL：</p>
-                                <div class="code-copy-box">
-                                    <code id="cron-webhook-url">http://.../api/cron/run?token=...</code>
-                                    <button class="btn-icon" onclick="copyToClipboard('cron-webhook-url')"><i
-                                            class="fa-solid fa-copy"></i></button>
+                            <div class="form-group">
+                                <label class="form-label">{{ t('dashboard.cron.schedule_interval') }}</label>
+                                <select id="cron-interval-type" class="form-select">
+                                    <option value="daily" selected>{{ t('dashboard.cron.interval_daily') }}</option>
+                                    <option value="every_n_hours">{{ t('dashboard.cron.interval_every_n_hours') }}
+                                    </option>
+                                    <option value="every_n_minutes">{{ t('dashboard.cron.interval_every_n_minutes') }}
+                                    </option>
+                                    <option value="custom">{{ t('dashboard.cron.interval_custom') }}</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group hidden" id="cron-value-container">
+                                <label class="form-label" id="cron-value-label">{{ t('dashboard.cron.interval_n_label')
+                                    }}</label>
+                                <input type="number" id="cron-interval-value" class="form-input" min="1" max="59"
+                                    value="1">
+                                <p class="field-hint" id="cron-value-hint">{{ t('dashboard.cron.interval_n_hint') }}</p>
+                            </div>
+
+                            <div class="form-row" id="cron-time-inputs">
+                                <div class="form-group col" id="cron-hour-group">
+                                    <label class="form-label">{{ t('dashboard.cron.hour_label') }}</label>
+                                    <input type="number" id="cron-hour" class="form-input" min="0" max="23" value="9">
+                                </div>
+                                <div class="form-group col" id="cron-minute-group">
+                                    <label class="form-label">{{ t('dashboard.cron.minute_label') }}</label>
+                                    <input type="number" id="cron-minute" class="form-input" min="0" max="59" value="0">
                                 </div>
                             </div>
-                        </div>
+
+                            <div class="form-group hidden" id="cron-custom-input">
+                                <label class="form-label">{{ t('dashboard.cron.custom_expr_label') }}</label>
+                                <input type="text" id="cron-custom-expr" class="form-input" placeholder="0 9 * * *">
+                                <p class="field-hint">{{ t('dashboard.cron.custom_expr_hint') }}</p>
+                            </div>
+
+                            <button type="submit" class="btn btn-emerald w-100" id="btn-save-cron">
+                                <i class="fa-solid fa-floppy-disk"></i> {{ t('dashboard.cron.save_schedule_btn') }}
+                            </button>
+                        </form>
                     </div>
                 </div>
             </section>
@@ -311,15 +308,17 @@
                 <div class="card mb-4">
                     <div class="card-header">
                         <div>
-                            <h2><i class="fa-solid fa-wand-magic-sparkles"></i> 個人別チケット売上画像の一括生成</h2>
-                            <p class="card-desc">スプレッドシートの加工済みデータ（Ticket / Members）を読み込み、3-Slice縦可変長画像を生成してZIP化します。</p>
+                            <h2><i class="fa-solid fa-wand-magic-sparkles"></i> {{ t('dashboard.images.control_title')
+                                }}</h2>
+                            <p class="card-desc">{{ t('dashboard.images.control_desc') }}</p>
                         </div>
                         <div class="action-buttons-compact">
                             <button class="btn btn-emerald btn-lg" id="btn-start-image-gen">
-                                <i class="fa-solid fa-play"></i> 画像作成を開始
+                                <i class="fa-solid fa-play"></i> {{ t('dashboard.images.generate_btn') }}
                             </button>
-                            <a href="/tickekan-system/api/images/download" class="btn btn-primary btn-lg disabled" id="btn-download-images-zip">
-                                <i class="fa-solid fa-file-zipper"></i> ZIPをダウンロード
+                            <a href="/tickekan-system/api/images/download" class="btn btn-primary btn-lg disabled"
+                                id="btn-download-images-zip">
+                                <i class="fa-solid fa-file-zipper"></i> {{ t('dashboard.images.download_zip_btn') }}
                             </a>
                         </div>
                     </div>
@@ -328,25 +327,28 @@
                         <div class="image-gen-status-box" id="image-gen-status-box">
                             <div class="status-summary-grid">
                                 <div class="status-info-item">
-                                    <span class="info-label">生成ステータス:</span>
+                                    <span class="info-label">{{ t('common.current_status') }}:</span>
                                     <span class="info-value" id="image-gen-status-text">
                                         <span class="status-dot idle" id="image-gen-status-dot"></span>
-                                        <span>待機中</span>
+                                        <span>{{ t('common.status_idle') }}</span>
                                     </span>
                                 </div>
                                 <div class="status-info-item">
-                                    <span class="info-label">ZIPアーカイブ:</span>
-                                    <span class="info-value" id="image-gen-zip-info">未生成</span>
+                                    <span class="info-label">{{ t('dashboard.images.zip_archive_label') }}</span>
+                                    <span class="info-value" id="image-gen-zip-info">{{
+                                        t('dashboard.images.zip_ungenerated') }}</span>
                                 </div>
                             </div>
 
                             <!-- Progress Bar (Shown during generation) -->
                             <div class="progress-container mt-3 hidden" id="image-gen-progress-container">
                                 <div class="progress-bar-track">
-                                    <div class="progress-bar-fill" id="image-gen-progress-fill" style="width: 0%;"></div>
+                                    <div class="progress-bar-fill" id="image-gen-progress-fill" style="width: 0%;">
+                                    </div>
                                 </div>
                                 <div class="progress-text-row">
-                                    <span class="progress-msg" id="image-gen-progress-msg">準備中...</span>
+                                    <span class="progress-msg" id="image-gen-progress-msg">{{
+                                        t('dashboard.images.preparing') }}</span>
                                     <span class="progress-percent" id="image-gen-progress-percent">0%</span>
                                 </div>
                             </div>
@@ -359,11 +361,11 @@
                     <!-- Column 1: Background Images (3-Slice) -->
                     <div class="card">
                         <div class="card-header">
-                            <h2><i class="fa-solid fa-layer-group"></i> 背景画像スライス (3-Slice) 登録 & プレビュー</h2>
+                            <h2><i class="fa-solid fa-layer-group"></i> {{ t('dashboard.images.preview_title') }}</h2>
                         </div>
                         <div class="card-body">
                             <p class="card-desc mb-3">
-                                縦可変長画像用に <code>bg-top.png</code> (上部), <code>bg-loop.png</code> (中間ループ), <code>bg-bottom.png</code> (下部) を登録します。
+                                {{ t('dashboard.images.slices_desc') }}
                             </p>
 
                             <!-- Slice Upload Cards -->
@@ -371,18 +373,21 @@
                                 <!-- Top -->
                                 <div class="bg-slice-item">
                                     <div class="bg-slice-header">
-                                        <span class="badge badge-primary">上部</span>
+                                        <span class="badge badge-primary">{{ t('dashboard.images.slice_top') }}</span>
                                         <strong>bg-top.png</strong>
-                                        <span class="slice-status" id="status-bg-top"><i class="fa-solid fa-spinner fa-spin"></i></span>
+                                        <span class="slice-status" id="status-bg-top"><i
+                                                class="fa-solid fa-spinner fa-spin"></i></span>
                                     </div>
                                     <div class="bg-slice-body">
                                         <div class="slice-preview-thumb" id="thumb-bg-top">
                                             <span>No Image</span>
                                         </div>
                                         <div class="slice-upload-action">
-                                            <input type="file" id="file-bg-top" accept="image/png" class="file-input-hidden">
-                                            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('file-bg-top').click()">
-                                                <i class="fa-solid fa-upload"></i> 変更
+                                            <input type="file" id="file-bg-top" accept="image/*"
+                                                class="file-input-hidden">
+                                            <button class="btn btn-secondary btn-sm"
+                                                onclick="document.getElementById('file-bg-top').click()">
+                                                <i class="fa-solid fa-upload"></i> {{ t('common.upload') }}
                                             </button>
                                         </div>
                                     </div>
@@ -391,18 +396,21 @@
                                 <!-- Loop -->
                                 <div class="bg-slice-item">
                                     <div class="bg-slice-header">
-                                        <span class="badge badge-info">中間ループ</span>
+                                        <span class="badge badge-info">{{ t('dashboard.images.slice_loop') }}</span>
                                         <strong>bg-loop.png</strong>
-                                        <span class="slice-status" id="status-bg-loop"><i class="fa-solid fa-spinner fa-spin"></i></span>
+                                        <span class="slice-status" id="status-bg-loop"><i
+                                                class="fa-solid fa-spinner fa-spin"></i></span>
                                     </div>
                                     <div class="bg-slice-body">
                                         <div class="slice-preview-thumb" id="thumb-bg-loop">
                                             <span>No Image</span>
                                         </div>
                                         <div class="slice-upload-action">
-                                            <input type="file" id="file-bg-loop" accept="image/png" class="file-input-hidden">
-                                            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('file-bg-loop').click()">
-                                                <i class="fa-solid fa-upload"></i> 変更
+                                            <input type="file" id="file-bg-loop" accept="image/*"
+                                                class="file-input-hidden">
+                                            <button class="btn btn-secondary btn-sm"
+                                                onclick="document.getElementById('file-bg-loop').click()">
+                                                <i class="fa-solid fa-upload"></i> {{ t('common.upload') }}
                                             </button>
                                         </div>
                                     </div>
@@ -411,18 +419,22 @@
                                 <!-- Bottom -->
                                 <div class="bg-slice-item">
                                     <div class="bg-slice-header">
-                                        <span class="badge badge-emerald">下部</span>
+                                        <span class="badge badge-emerald">{{ t('dashboard.images.slice_bottom')
+                                            }}</span>
                                         <strong>bg-bottom.png</strong>
-                                        <span class="slice-status" id="status-bg-bottom"><i class="fa-solid fa-spinner fa-spin"></i></span>
+                                        <span class="slice-status" id="status-bg-bottom"><i
+                                                class="fa-solid fa-spinner fa-spin"></i></span>
                                     </div>
                                     <div class="bg-slice-body">
                                         <div class="slice-preview-thumb" id="thumb-bg-bottom">
                                             <span>No Image</span>
                                         </div>
                                         <div class="slice-upload-action">
-                                            <input type="file" id="file-bg-bottom" accept="image/png" class="file-input-hidden">
-                                            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('file-bg-bottom').click()">
-                                                <i class="fa-solid fa-upload"></i> 変更
+                                            <input type="file" id="file-bg-bottom" accept="image/*"
+                                                class="file-input-hidden">
+                                            <button class="btn btn-secondary btn-sm"
+                                                onclick="document.getElementById('file-bg-bottom').click()">
+                                                <i class="fa-solid fa-upload"></i> {{ t('common.upload') }}
                                             </button>
                                         </div>
                                     </div>
@@ -431,7 +443,7 @@
 
                             <!-- Combined Live Preview Modal/Box -->
                             <div class="combined-preview-section mt-4">
-                                <h3><i class="fa-solid fa-eye"></i> 縦連結プレビュー</h3>
+                                <h3><i class="fa-solid fa-eye"></i> {{ t('dashboard.images.preview_combined') }}</h3>
                                 <div class="combined-preview-container" id="combined-preview-container">
                                     <img id="prev-img-top" src="" alt="Top" class="slice-img">
                                     <img id="prev-img-loop" src="" alt="Loop" class="slice-img">
@@ -444,37 +456,68 @@
                     <!-- Column 2: Font Management -->
                     <div class="card">
                         <div class="card-header">
-                            <h2><i class="fa-solid fa-font"></i> フォントの選択 & アップロード</h2>
+                            <h2><i class="fa-solid fa-font"></i> {{ t('dashboard.images.font_settings') }}</h2>
                         </div>
                         <div class="card-body">
                             <!-- Font Selection -->
                             <div class="form-group">
-                                <label class="form-label">使用するフォント</label>
+                                <label class="form-label">{{ t('dashboard.images.font_select_label') }}</label>
                                 <div class="input-group">
                                     <select id="font-select" class="form-select">
-                                        <option value="">フォントを読み込み中...</option>
+                                        <option value="">{{ t('dashboard.images.font_loading') }}</option>
                                     </select>
-                                    <button class="btn btn-danger" id="btn-delete-font" title="選択中のカスタムフォントを削除（解除）">
-                                        <i class="fa-solid fa-trash-can"></i> 削除
+                                    <button class="btn btn-danger" id="btn-delete-font"
+                                        title="{{ t('common.delete') }}">
+                                        <i class="fa-solid fa-trash-can"></i> {{ t('common.delete') }}
                                     </button>
                                 </div>
-                                <p class="field-hint">画像内のタイトル、明細、合計文字の描画に使用されます。（カスタムフォントのみ削除可能）</p>
+                                <p class="field-hint">{{ t('dashboard.images.font_hint') }}</p>
                             </div>
 
                             <!-- Font Upload Dropzone -->
                             <div class="form-group mt-4">
-                                <label class="form-label">新しいフォントをアップロード</label>
+                                <label class="form-label">{{ t('dashboard.images.font_upload_title') }}</label>
                                 <div class="upload-dropzone compact" id="font-dropzone">
                                     <i class="fa-solid fa-file-arrow-up upload-icon"></i>
-                                    <h4>フォントファイルをドラッグ＆ドロップ</h4>
-                                    <p>(.ttf / .otf / .ttc 対応)</p>
-                                    <input type="file" id="font-file-input" accept=".ttf,.otf,.ttc" class="file-input-hidden">
-                                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('font-file-input').click()">
-                                        <i class="fa-solid fa-folder-open"></i> ファイルを選択
+                                    <h4>{{ t('dashboard.images.font_drag_drop') }}</h4>
+                                    <p>{{ t('dashboard.images.font_formats') }}</p>
+                                    <input type="file" id="font-file-input" accept=".ttf,.otf,.ttc"
+                                        class="file-input-hidden">
+                                    <button class="btn btn-secondary btn-sm"
+                                        onclick="document.getElementById('font-file-input').click()">
+                                        <i class="fa-solid fa-folder-open"></i> {{ t('dashboard.account.select_file') }}
                                     </button>
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 6: USAGE MANUAL -->
+            <section class="tab-content" id="tab-usage">
+                <div class="card usage-card mb-4">
+                    <div class="card-header flex-between">
+                        <div class="header-info">
+                            <h2><i class="fa-solid fa-book-open"></i> {{ t('dashboard.tabs.usage') }}</h2>
+                            <p class="section-desc">{{ t('dashboard.tabs.usage_desc') }}</p>
+                        </div>
+                        <div class="header-actions">
+                            <button class="btn btn-secondary btn-sm" id="btn-refresh-usage" title="{{ t('common.refresh') }}">
+                                <i class="fa-solid fa-rotate"></i> {{ t('common.refresh') }}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="usage-loading" class="usage-loading-state">
+                            <i class="fa-solid fa-circle-notch fa-spin"></i>
+                            <p>{{ t('common.loading') }}</p>
+                        </div>
+                        <div id="usage-error" class="usage-error-state hidden">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <p id="usage-error-text"></p>
+                        </div>
+                        <article class="markdown-body" id="usage-markdown-content"></article>
                     </div>
                 </div>
             </section>
@@ -485,7 +528,7 @@
     <div id="toast-container" class="toast-container"></div>
 
     <!-- JavaScript Application Logic -->
-    <script src="./static/app.js"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 
 </html>

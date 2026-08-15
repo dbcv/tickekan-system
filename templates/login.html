@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ t('login.page_title') }}</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700&display=swap"
+        rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Custom Style -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='login.css') }}">
+</head>
+
+<body>
+    <div class="login-wrapper">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="login-icon">
+                    <i class="fa-solid fa-ticket-simple"></i>
+                </div>
+                <h1 class="login-title">{{ t('login.title') }}</h1>
+                <p class="login-subtitle">{{ t('login.subtitle') }}</p>
+            </div>
+
+            {% if error %}
+            <div class="login-error">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>{{ error }}</span>
+            </div>
+            {% endif %}
+
+            <form method="POST" action="" id="login-form">
+                <div class="form-group">
+                    <label for="username">{{ t('login.username_label') }}</label>
+                    <div class="input-wrapper">
+                        <i class="fa-solid fa-user prefix-icon"></i>
+                        <input type="text" id="username" name="username" placeholder="{{ t('login.username_placeholder') }}"
+                            autocomplete="username" required autofocus value="{{ username or '' }}">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">{{ t('login.password_label') }}</label>
+                    <div class="input-wrapper">
+                        <i class="fa-solid fa-lock prefix-icon"></i>
+                        <input type="password" id="password" name="password" placeholder="{{ t('login.password_placeholder') }}"
+                            autocomplete="current-password" required>
+                        <button type="button" class="toggle-password" id="toggle-password-btn" aria-label="{{ t('login.show_password') }}">
+                            <i class="fa-regular fa-eye" id="toggle-icon"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-login">
+                    <span>{{ t('login.submit_btn') }}</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </form>
+
+            <div class="login-footer">
+                <span>{{ t('common.copyright') }}</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='login.js') }}"></script>
+</body>
+
+</html>

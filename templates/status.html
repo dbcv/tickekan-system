@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ t('status.page_title', name=name) }}</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;600;700;800&display=swap"
+        rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Custom Style -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='status.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Brand Header -->
+        <header class="header">
+            <div class="brand">
+                <div class="brand-icon">
+                    <i class="fa-solid fa-ticket-simple"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>{{ t('common.app_name') }}</h1>
+                    <span>Personal Ticket Status</span>
+                </div>
+            </div>
+            {% if valid %}
+            <div class="header-badge">
+                <span class="pulse-dot"></span>
+                <span>{{ t('status.online_status') }}</span>
+            </div>
+            {% endif %}
+        </header>
+
+        {% if valid %}
+        <!-- Profile Hero Card -->
+        <div class="hero-card">
+            <div class="hero-header">
+                <div class="user-info">
+                    <div class="user-avatar">
+                        <i class="fa-solid fa-user-check"></i>
+                    </div>
+                    <div class="user-name-wrapper">
+                        <h2>{{ name }} <span style="font-size: 1rem; font-weight: 400; color: var(--text-muted);">{{ t('status.name_suffix') }}</span></h2>
+                        <p><i class="fa-regular fa-clock"></i> {{ t('status.last_updated_label') }} <span id="last-updated-text">{{ last_updated }}</span></p>
+                    </div>
+                </div>
+                <button class="refresh-btn" id="btn-refresh" onclick="refreshData()">
+                    <i class="fa-solid fa-arrows-rotate" id="refresh-icon"></i>
+                    <span>{{ t('status.refresh_btn') }}</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div>
+                    <div class="stat-label">{{ t('status.summary_total_count') }}</div>
+                    <div class="stat-value highlight" id="total-count-display">{{ total_count }} <span style="font-size: 1.1rem; font-weight: 500;">{{ t('status.count_unit') }}</span></div>
+                </div>
+                <div class="stat-icon emerald">
+                    <i class="fa-solid fa-ticket"></i>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div>
+                    <div class="stat-label">{{ t('status.summary_reservation_count') }}</div>
+                    <div class="stat-value" id="reservation-count-display">{{ reservation_count }} <span style="font-size: 1.1rem; font-weight: 500;">{{ t('status.reservation_unit') }}</span></div>
+                </div>
+                <div class="stat-icon blue">
+                    <i class="fa-solid fa-users"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stage Breakdown (If available) -->
+        {% if stage_totals %}
+        <div class="breakdown-card">
+            <div class="breakdown-title">
+                <i class="fa-solid fa-layer-group"></i> {{ t('status.stage_breakdown') }}
+            </div>
+            <div class="breakdown-chips" id="breakdown-chips-container">
+                {% for stage_name, count in stage_totals.items() %}
+                <div class="chip">
+                    <span class="chip-stage">{{ stage_name }}</span>
+                    <span class="chip-count">{{ count }} {{ t('status.count_unit') }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Detailed Reservation Table -->
+        <div class="table-card">
+            <div class="table-header">
+                <h3>
+                    <i class="fa-solid fa-list-check"></i> {{ t('status.reservation_details') }}
+                </h3>
+                <div class="search-box">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" id="filter-input" placeholder="{{ t('status.search_placeholder') }}" oninput="filterTable()">
+                </div>
+            </div>
+
+            {% if rows and rows|length > 0 %}
+            <div style="overflow-x: auto;">
+                <table class="custom-table" id="tickets-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">{{ t('status.table_stage') }}</th>
+                            <th style="width: 50%;">{{ t('status.table_name') }}</th>
+                            <th style="width: 25%; text-align: right;">{{ t('status.table_count') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tickets-tbody">
+                        {% for r in rows %}
+                        <tr class="ticket-row">
+                            <td>
+                                <span class="stage-badge">{{ r.stage }}</span>
+                            </td>
+                            <td>
+                                <span class="buyer-name">{{ r.buyer }}</span> <span style="color: var(--text-dim); font-size: 0.8rem;">{{ t('status.name_suffix') }}</span>
+                            </td>
+                            <td style="text-align: right;">
+                                <span class="count-badge">{{ r.count }} {{ t('status.count_unit') }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <!-- Empty State -->
+            <div class="empty-state" id="empty-state-view">
+                <div class="empty-icon">
+                    <i class="fa-solid fa-inbox"></i>
+                </div>
+                <h4>{{ t('status.empty_title') }}</h4>
+                <p>{{ t('status.empty_desc') }}</p>
+            </div>
+            {% endif %}
+        </div>
+
+        {% else %}
+        <!-- 403 / 認証エラー表示 -->
+        <div class="error-card">
+            <div class="error-icon">
+                <i class="fa-solid fa-lock"></i>
+            </div>
+            <h2>{{ t('status.not_found_title') }}</h2>
+            <p>{{ error or t('status.not_found_desc') }}</p>
+            <p style="font-size: 0.8rem; color: var(--text-dim);">{{ t('status.error_contact') }}</p>
+        </div>
+        {% endif %}
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>{{ t('common.app_name') }} {{ t('common.app_version') }}</p>
+            <p>Secure Sync with Google Spreadsheet</p>
+        </footer>
+    </div>
+
+    <!-- Client-side Interactive Script -->
+    <script src="{{ url_for('static', filename='status.js') }}"></script>
+</body>
+
+</html>

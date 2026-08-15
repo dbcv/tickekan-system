@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 320" width="100%" height="100%">
+  <defs>
+    <linearGradient id="gradBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="gradCard1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="gradCard2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="gradCard3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="gradCard4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
+    </linearGradient>
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <rect width="900" height="320" rx="16" fill="url(#gradBg)"/>
+
+  <!-- Source Services -->
+  <g filter="url(#dropShadow)">
+    <rect x="40" y="45" width="200" height="100" rx="12" fill="url(#gradCard1)"/>
+    <text x="140" y="85" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="bold" text-anchor="middle">R7 / Teket</text>
+    <text x="140" y="115" fill="#e0e7ff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" text-anchor="middle">チケット予約データ取得</text>
+  </g>
+
+  <!-- Execution & Sync Engine -->
+  <g filter="url(#dropShadow)">
+    <rect x="40" y="175" width="200" height="100" rx="12" fill="url(#gradCard4)"/>
+    <text x="140" y="215" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="bold" text-anchor="middle">チケ管システム</text>
+    <text x="140" y="245" fill="#ede9fe" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" text-anchor="middle">自動同期 / 定期実行 (Cron)</text>
+  </g>
+
+  <!-- Arrow 1: Sources -> System -->
+  <path d="M 140 145 L 140 175" stroke="#94a3b8" stroke-width="3" stroke-dasharray="4" fill="none"/>
+
+  <!-- Arrow 2: System -> Google Sheets -->
+  <path d="M 240 225 L 340 225 L 340 160 L 370 160" stroke="#38bdf8" stroke-width="3" fill="none"/>
+  <polygon points="370,160 360,154 360,166" fill="#38bdf8"/>
+
+  <!-- Google Sheets -->
+  <g filter="url(#dropShadow)">
+    <rect x="375" y="105" width="210" height="110" rx="12" fill="url(#gradCard2)"/>
+    <text x="480" y="150" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Google スプレッドシート</text>
+    <text x="480" y="180" fill="#d1fae5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" text-anchor="middle">データの編集・統合</text>
+  </g>
+
+  <!-- Arrows from Google Sheets to Outputs -->
+  <path d="M 585 135 L 650 135 L 650 90 L 675 90" stroke="#fbbf24" stroke-width="3" fill="none"/>
+  <polygon points="675,90 665,84 665,96" fill="#fbbf24"/>
+
+  <path d="M 585 185 L 650 185 L 650 230 L 675 230" stroke="#fbbf24" stroke-width="3" fill="none"/>
+  <polygon points="675,230 665,224 665,236" fill="#fbbf24"/>
+
+  <!-- Output 1: Image Generator -->
+  <g filter="url(#dropShadow)">
+    <rect x="680" y="45" width="180" height="90" rx="12" fill="url(#gradCard3)"/>
+    <text x="770" y="85" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="bold" text-anchor="middle">売上画像生成</text>
+    <text x="770" y="110" fill="#fef3c7" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" text-anchor="middle"></text>
+  </g>
+
+  <!-- Output 2: Member Status Pages -->
+  <g filter="url(#dropShadow)">
+    <rect x="680" y="185" width="180" height="90" rx="12" fill="#0284c7"/>
+    <text x="770" y="225" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="bold" text-anchor="middle">個別売上ページ</text>
+    <text x="770" y="250" fill="#e0f2fe" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" text-anchor="middle"></text>
+  </g>
+</svg>

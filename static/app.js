@@ -6,10 +6,53 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Global Config ---
     const API_BASE = '/tickekan-system/api';
 
+    // --- Session Expiration Interceptor ---
+    const originalFetch = window.fetch;
+    window.fetch = async function (...args) {
+        const response = await originalFetch(...args);
+        if (response.status === 401) {
+            try {
+                const clone = response.clone();
+                const data = await clone.json();
+                if (data && data.redirect) {
+                    window.location.href = data.redirect;
+                    return response;
+                }
+            } catch (e) { }
+            window.location.href = './login';
+        }
+        return response;
+    };
+
     // --- Global State ---
     let eventSource = null;
     let autoScroll = true;
     let currentStatus = { is_running: false, is_waiting_input: false };
+    let usageLoaded = false;
+
+    // --- i18n Helper ---
+    let i18nData = {};
+    const i18nScript = document.getElementById('i18n-data');
+    if (i18nScript) {
+        try {
+            i18nData = JSON.parse(i18nScript.textContent);
+        } catch (e) {
+            console.error('Failed to parse i18n data:', e);
+        }
+    }
+
+    function t(key, defaultVal) {
+        const parts = key.split('.');
+        let cur = i18nData;
+        for (const p of parts) {
+            if (cur && typeof cur === 'object' && p in cur) {
+                cur = cur[p];
+            } else {
+                return defaultVal !== undefined ? defaultVal : key;
+            }
+        }
+        return cur || defaultVal || key;
+    }
 
     // --- DOM Elements ---
     const navItems = document.querySelectorAll('.nav-item');
@@ -36,36 +79,122 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusBadgeText = document.getElementById('status-badge-text');
     const lastRunStatusText = document.getElementById('last-run-status-text');
 
-    // --- Tab Navigation ---
+    // Usage Manual DOM Elements
+    const usageLoading = document.getElementById('usage-loading');
+    const usageError = document.getElementById('usage-error');
+    const usageErrorText = document.getElementById('usage-error-text');
+    const usageMarkdownContent = document.getElementById('usage-markdown-content');
+    const btnRefreshUsage = document.getElementById('btn-refresh-usage');
+
+    // --- Tab Navigation & Mobile Drawer ---
     const tabMeta = {
-        'tab-console': { title: '実行コントロール', desc: 'AutoTicket の手動実行・ステータス監視・R7ログイン対話入力' },
-        'tab-images': { title: '売上画像生成', desc: 'スプレッドシートデータから3-Slice縦可変長画像を一括生成・ZIPダウンロード' },
-        'tab-env': { title: '.env 環境変数エディタ', desc: '項目名は固定保護されています。設定値 (Value) を更新してください' },
-        'tab-account': { title: 'サービスアカウント設定', desc: 'Google Sheets API 連携用 service_account.json の管理' },
-        'tab-cron': { title: '定期実行 (Cron) システム', desc: 'レンタルサーバー環境での自動実行タイミングの設定とステータス' },
+        'tab-console': { title: t('dashboard.tabs.console', '実行コントロール'), desc: t('dashboard.tabs.console_desc', 'R7およびTeketからの情報取得およびスプシへの反映') },
+        'tab-images': { title: t('dashboard.tabs.images', '売上画像生成'), desc: t('dashboard.tabs.images_desc', 'スプレッドシートデータから3-Slice縦可変長画像を一括生成・ZIPダウンロード') },
+        'tab-env': { title: t('dashboard.tabs.env', '.env エディタ'), desc: t('dashboard.tabs.env_desc', '項目名は固定保護されています。設定値 (Value) を更新してください') },
+        'tab-account': { title: t('dashboard.tabs.account', 'サービスアカウント'), desc: t('dashboard.tabs.account_desc', 'Google Sheets API 連携用 service_account.json の管理') },
+        'tab-cron': { title: t('dashboard.tabs.cron', '定期実行 (Cron)'), desc: t('dashboard.tabs.cron_desc', 'レンタルサーバー環境での自動実行タイミングの設定とステータス') },
+        'tab-usage': { title: t('dashboard.tabs.usage', '使い方'), desc: t('dashboard.tabs.usage_desc', 'システムの利用方法・マニュアル・設定ガイド') },
     };
+
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
+    const btnHamburger = document.getElementById('btn-hamburger');
+    const btnSidebarClose = document.getElementById('btn-sidebar-close');
+
+    function closeSidebar() {
+        if (sidebar) sidebar.classList.remove('open');
+        if (sidebarOverlay) sidebarOverlay.classList.remove('active');
+    }
+
+    function openSidebar() {
+        if (sidebar) sidebar.classList.add('open');
+        if (sidebarOverlay) sidebarOverlay.classList.add('active');
+    }
+
+    if (btnHamburger) {
+        btnHamburger.addEventListener('click', () => {
+            if (sidebar && sidebar.classList.contains('open')) {
+                closeSidebar();
+            } else {
+                openSidebar();
+            }
+        });
+    }
+
+    if (btnSidebarClose) {
+        btnSidebarClose.addEventListener('click', closeSidebar);
+    }
+
+    if (sidebarOverlay) {
+        sidebarOverlay.addEventListener('click', closeSidebar);
+    }
+
+    function switchTab(targetTab, updateHash = true) {
+        if (!tabMeta[targetTab]) {
+            targetTab = 'tab-console';
+        }
+
+        navItems.forEach(n => {
+            if (n.getAttribute('data-tab') === targetTab) {
+                n.classList.add('active');
+            } else {
+                n.classList.remove('active');
+            }
+        });
+
+        tabContents.forEach(c => {
+            if (c.id === targetTab) {
+                c.classList.add('active');
+            } else {
+                c.classList.remove('active');
+            }
+        });
+
+        if (tabMeta[targetTab]) {
+            activeTabTitle.textContent = tabMeta[targetTab].title;
+            activeTabDesc.textContent = tabMeta[targetTab].desc;
+        }
+
+        if (updateHash) {
+            history.replaceState(null, null, '#' + targetTab);
+        }
+
+        // Mobile: close drawer on tab select
+        closeSidebar();
+
+        // Load data when tab opens
+        if (targetTab === 'tab-images') loadImageGeneratorConfig();
+        if (targetTab === 'tab-env') loadEnvFields();
+        if (targetTab === 'tab-account') loadServiceAccountStatus();
+        if (targetTab === 'tab-cron') loadCronStatus();
+        if (targetTab === 'tab-usage') loadUsageManual();
+    }
 
     navItems.forEach(item => {
         item.addEventListener('click', () => {
             const targetTab = item.getAttribute('data-tab');
-            navItems.forEach(n => n.classList.remove('active'));
-            tabContents.forEach(c => c.classList.remove('active'));
-
-            item.classList.add('active');
-            document.getElementById(targetTab).classList.add('active');
-
-            if (tabMeta[targetTab]) {
-                activeTabTitle.textContent = tabMeta[targetTab].title;
-                activeTabDesc.textContent = tabMeta[targetTab].desc;
-            }
-
-            // Load data when tab opens
-            if (targetTab === 'tab-images') loadImageGeneratorConfig();
-            if (targetTab === 'tab-env') loadEnvFields();
-            if (targetTab === 'tab-account') loadServiceAccountStatus();
-            if (targetTab === 'tab-cron') loadCronStatus();
+            switchTab(targetTab, true);
         });
     });
+
+    // Restore tab from URL hash on load
+    function initTabFromHash() {
+        const hash = window.location.hash.replace('#', '');
+        if (hash && tabMeta[hash]) {
+            switchTab(hash, false);
+        } else {
+            switchTab('tab-console', false);
+        }
+    }
+
+    window.addEventListener('hashchange', () => {
+        const hash = window.location.hash.replace('#', '');
+        if (hash && tabMeta[hash]) {
+            switchTab(hash, false);
+        }
+    });
+
+    initTabFromHash();
 
     // --- Toast Notifications ---
     window.showToast = function (message, type = 'info') {
@@ -91,9 +220,9 @@ document.addEventListener('DOMContentLoaded', () => {
     window.copyToClipboard = function (elementId) {
         const text = document.getElementById(elementId).textContent;
         navigator.clipboard.writeText(text).then(() => {
-            showToast('クリップボードにコピーしました！', 'success');
+            showToast(t('common.copied', 'クリップボードにコピーしました！'), 'success');
         }).catch(err => {
-            showToast('コピーに失敗しました', 'error');
+            showToast(t('common.copy_failed', 'コピーに失敗しました'), 'error');
         });
     };
 
@@ -977,7 +1106,185 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- Usage Manual (README.md) Renderer ---
+    function loadUsageManual(force = false) {
+        if (usageLoaded && !force) return;
+
+        const loadingEl = usageLoading || document.getElementById('usage-loading');
+        const errorEl = usageError || document.getElementById('usage-error');
+        const errorTextEl = usageErrorText || document.getElementById('usage-error-text');
+        const contentEl = usageMarkdownContent || document.getElementById('usage-markdown-content');
+
+        if (loadingEl) loadingEl.classList.remove('hidden');
+        if (errorEl) errorEl.classList.add('hidden');
+        if (contentEl && force) contentEl.innerHTML = '';
+
+        const apiUrl = `${API_BASE}/readme`;
+
+        fetch(apiUrl)
+            .then(res => {
+                if (!res.ok) {
+                    // フォールバック: 相対パス ./api/readme を試す
+                    return fetch('./api/readme').then(fallbackRes => {
+                        if (!fallbackRes.ok) throw new Error(`HTTP ${res.status}: READMEの取得に失敗しました`);
+                        return fallbackRes.json();
+                    });
+                }
+                return res.json();
+            })
+            .then(data => {
+                if (loadingEl) loadingEl.classList.add('hidden');
+
+                if (data.success && data.content) {
+                    usageLoaded = true;
+                    renderUsageMarkdown(data.content);
+                } else {
+                    if (errorEl) {
+                        errorEl.classList.remove('hidden');
+                        if (errorTextEl) errorTextEl.textContent = data.message || 'README.md が見つかりません。';
+                    }
+                }
+            })
+            .catch(err => {
+                if (loadingEl) loadingEl.classList.add('hidden');
+                if (errorEl) {
+                    errorEl.classList.remove('hidden');
+                    if (errorTextEl) errorTextEl.textContent = err.message || '通信エラーが発生しました。';
+                }
+            });
+    }
+
+    function renderUsageMarkdown(rawMarkdown) {
+        const contentEl = usageMarkdownContent || document.getElementById('usage-markdown-content');
+        if (!contentEl) return;
+
+        let html = '';
+        if (typeof marked !== 'undefined') {
+            // marked オプション設定
+            marked.setOptions({
+                gfm: true,
+                breaks: true,
+                headerIds: true,
+                mangle: false
+            });
+            html = marked.parse(rawMarkdown);
+        } else {
+            // marked がロードされていない場合のフォールバック（簡易エスケープ）
+            const esc = rawMarkdown.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            html = `<pre>${esc}</pre>`;
+        }
+
+        // DOMPurify によるサニタイズ（存在する場合）
+        if (typeof DOMPurify !== 'undefined') {
+            html = DOMPurify.sanitize(html, {
+                ADD_TAGS: ['iframe'],
+                ADD_ATTR: ['target', 'rel']
+            });
+        }
+
+        contentEl.innerHTML = html;
+
+        // 見出し (h1-h6) に GitHub 互換の ID を自動付与
+        const headings = contentEl.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        headings.forEach(h => {
+            const rawText = h.textContent || '';
+            // GitHub スタイルの slug 生成
+            const slug = rawText
+                .toLowerCase()
+                .trim()
+                .replace(/<[^>]+>/g, '')
+                .replace(/[^\p{L}\p{N}\p{M}\s\-_①-⑳㊀-㊉]/gu, '')
+                .replace(/\s+/g, '-')
+                .replace(/-+/g, '-');
+
+            if (!h.id) {
+                h.id = slug;
+            }
+            h.setAttribute('data-slug', slug);
+            h.setAttribute('data-raw', rawText.trim().toLowerCase());
+        });
+
+        // 相対画像パスの補正 (docs/images/... -> /tickekan-system/docs/images/...)
+        const images = contentEl.querySelectorAll('img');
+        images.forEach(img => {
+            let src = img.getAttribute('src') || '';
+            if (src.startsWith('./')) {
+                src = src.substring(2);
+            }
+            if (src.startsWith('docs/images/') || src.startsWith('media/')) {
+                // ベースパス補正
+                img.src = '/tickekan-system/' + src;
+                // 万一 404 の場合の相対パスフォールバック
+                img.onerror = function () {
+                    if (!this.dataset.triedFallback) {
+                        this.dataset.triedFallback = 'true';
+                        this.src = './' + src;
+                    }
+                };
+            }
+            // 画像のアクセシビリティ & レスポンシブ
+            img.setAttribute('loading', 'lazy');
+            img.classList.add('manual-img');
+        });
+
+        // 外部リンクターゲットを別タブにし、ページ内リンク (#...) をスムーズスクロール
+        const links = contentEl.querySelectorAll('a');
+        links.forEach(a => {
+            const href = a.getAttribute('href') || '';
+            if (href.startsWith('http://') || href.startsWith('https://')) {
+                a.setAttribute('target', '_blank');
+                a.setAttribute('rel', 'noopener noreferrer');
+            } else if (href.startsWith('#')) {
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const rawTarget = href.substring(1);
+                    const targetId = decodeURIComponent(rawTarget);
+                    const cleanTarget = targetId.toLowerCase().replace(/[^a-z0-9\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf①-⑳]/g, '');
+
+                    // 1. 完全一致で要素を探索
+                    let targetEl = null;
+                    try {
+                        targetEl = document.getElementById(targetId) ||
+                                   contentEl.querySelector(`[id="${CSS.escape(targetId)}"]`) ||
+                                   contentEl.querySelector(`a[name="${CSS.escape(targetId)}"]`);
+                    } catch (err) {
+                        targetEl = document.getElementById(targetId);
+                    }
+
+                    // 2. 見出しの slug やテキストで柔軟に探索
+                    if (!targetEl) {
+                        headings.forEach(h => {
+                            if (targetEl) return;
+                            const hSlug = h.getAttribute('data-slug') || '';
+                            const hRaw = h.getAttribute('data-raw') || '';
+                            const cleanHRaw = hRaw.replace(/[^a-z0-9\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf①-⑳]/g, '');
+
+                            if (hSlug === targetId ||
+                                hRaw === targetId.toLowerCase() ||
+                                (cleanTarget && cleanHRaw.includes(cleanTarget)) ||
+                                (cleanTarget && cleanTarget.includes(cleanHRaw))) {
+                                targetEl = h;
+                            }
+                        });
+                    }
+
+                    if (targetEl) {
+                        targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                });
+            }
+        });
+    }
+
+    if (btnRefreshUsage) {
+        btnRefreshUsage.addEventListener('click', () => {
+            showToast('マニュアルを再読み込み中...', 'info');
+            loadUsageManual(true);
+        });
+    }
+
     // --- Initialize App ---
     startPollingMode();
 });
+
 

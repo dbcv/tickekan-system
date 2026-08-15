@@ -8,6 +8,7 @@ bg-top.png, bg-loop.png, bg-bottom.png を使用し、
 
 import os
 import sys
+import re
 import math
 import shutil
 import zipfile
@@ -337,12 +338,29 @@ def generate_all_personal_images(
         "total": load_font(resolved_font, TOTAL_FONT_SIZE),
     }
 
-    # 「名前」でチケットをグループ化
+    # 「名前」でチケットをグループ化（カンマ区切り複数人名の場合は人数で均等分割）
     grouped_people = defaultdict(list)
     for row in ticket_data:
-        name = str(row.get("名前", "")).strip()
-        if name:
-            grouped_people[name].append(row)
+        raw_name = str(row.get("名前", "")).strip()
+        if not raw_name:
+            continue
+
+        names = [n.strip() for n in re.split(r'[,，]', raw_name) if n.strip()]
+        if not names:
+            continue
+
+        try:
+            total_count = float(row.get("数", 0))
+        except (ValueError, TypeError):
+            total_count = 0.0
+
+        split_count = total_count / len(names)
+
+        for n in names:
+            person_row = dict(row)
+            person_row["名前"] = n
+            person_row["数"] = split_count
+            grouped_people[n].append(person_row)
 
     generated_files = []
     total_members = len(member_data)
